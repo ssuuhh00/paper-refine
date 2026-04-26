@@ -5,25 +5,84 @@
 #   ./start.sh              # uses defaults: server :3001, web :5173
 #   SERVER_PORT=4000 WEB_PORT=4173 ./start.sh
 #   ./start.sh --no-open    # skip browser
+#   ./start.sh --kill-stale # kill leftover paper-refine procs on those ports
+#                           # (only kills procs whose cwd is under this repo)
 #
 # Logs go to /tmp/paper-refine-{server,web}.log; tail them in another shell.
 
 set -euo pipefail
 
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 
 SERVER_PORT="${SERVER_PORT:-3001}"
 WEB_PORT="${WEB_PORT:-5173}"
 OPEN_BROWSER=1
+KILL_STALE=0
 for arg in "$@"; do
   case "$arg" in
     --no-open) OPEN_BROWSER=0 ;;
+    --kill-stale) KILL_STALE=1 ;;
     -h|--help)
-      sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
   esac
 done
+
+# Returns 0 (and prints a short summary) if every PID holding $1 has its cwd
+# inside $SCRIPT_DIR. Returns non-zero if any PID is foreign or the port
+# is free.
+port_is_only_ours() {
+  local port=$1
+  local pids
+  pids=$(lsof -ti:"$port" 2>/dev/null || true)
+  [ -z "$pids" ] && return 1  # nothing on the port → nothing to "kill"
+  local pid cwd
+  for pid in $pids; do
+    cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null || echo "")
+    case "$cwd" in
+      "$SCRIPT_DIR"|"$SCRIPT_DIR"/*) ;;
+      *) return 1 ;;  # foreign process — refuse
+    esac
+  done
+  echo "$pids"
+  return 0
+}
+
+# Print who is on the given port (pid + cwd + cmd) — for the refuse message.
+describe_port_holder() {
+  local port=$1
+  local pid cwd cmd
+  for pid in $(lsof -ti:"$port" 2>/dev/null || true); do
+    cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null || echo "?")
+    cmd=$(ps -p "$pid" -o args= 2>/dev/null | head -c 80 || echo "?")
+    echo "    pid=$pid cwd=$cwd"
+    echo "      cmd: $cmd"
+  done
+}
+
+handle_busy_port() {
+  local port=$1 label=$2 envvar=$3
+  if ! lsof -ti:"$port" >/dev/null 2>&1; then
+    return 0  # free
+  fi
+  if [ "$KILL_STALE" = 1 ]; then
+    local ours
+    if ours=$(port_is_only_ours "$port"); then
+      echo "🧹 killing stale $label proc(s) on $port: $ours"
+      kill -9 $ours 2>/dev/null || true
+      sleep 0.3
+      return 0
+    fi
+    echo "✗ port $port held by a process outside this repo — refusing to kill." >&2
+    describe_port_holder "$port" >&2
+    exit 1
+  fi
+  echo "✗ port $port already in use. Free it, set $envvar=<other>, or rerun with --kill-stale." >&2
+  describe_port_holder "$port" >&2
+  exit 1
+}
 
 if ! command -v node >/dev/null 2>&1; then
   echo "✗ node not found — please install Node.js 18+ first." >&2
@@ -38,14 +97,8 @@ if [ ! -d node_modules ]; then
   npm install
 fi
 
-if lsof -ti:"$SERVER_PORT" >/dev/null 2>&1; then
-  echo "✗ port $SERVER_PORT already in use. Free it or set SERVER_PORT=<other>." >&2
-  exit 1
-fi
-if lsof -ti:"$WEB_PORT" >/dev/null 2>&1; then
-  echo "✗ port $WEB_PORT already in use. Free it or set WEB_PORT=<other>." >&2
-  exit 1
-fi
+handle_busy_port "$SERVER_PORT" backend  SERVER_PORT
+handle_busy_port "$WEB_PORT"    frontend WEB_PORT
 
 SERVER_LOG="/tmp/paper-refine-server.log"
 WEB_LOG="/tmp/paper-refine-web.log"
