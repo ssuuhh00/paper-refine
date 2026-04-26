@@ -57,6 +57,10 @@ export const api = {
       `/rounds/${id}/decisions?project_id=${encodeURIComponent(projectId)}`,
       { method: 'PATCH', body: JSON.stringify(patch) },
     ),
+  deleteRound: (projectId: string, id: string) =>
+    http<{ ok: true }>(`/rounds/${id}?project_id=${encodeURIComponent(projectId)}`, {
+      method: 'DELETE',
+    }),
 
   applyRound: (projectId: string, roundId: string, body: ApplyRequest) =>
     http<ApplyResponse>(

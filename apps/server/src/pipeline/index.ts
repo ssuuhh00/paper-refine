@@ -1,17 +1,22 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type {
+  Citation,
+  DiscriminatorOutput,
+  Edit,
+  GeneratorOutput,
+  ItemContext,
   ModelTier,
   Persona,
   PipelineEvent,
   PipelineStage,
   Project,
-  Side,
+  ReviewerOutput,
+  RoundItem,
 } from '@paper-refine/shared';
-import { runClaude } from './claude.js';
+import { runClaude, runClaudeJson } from './claude.js';
 import { loadDiscriminatorPrompt, loadGeneratorPrompt, loadReviewerPrompt } from './prompts.js';
-import { buildBlindTest, parseChangesItems } from './shuffle.js';
-import { parseRBlocks } from '../parse/sections.js';
+import { buildBlindTest, fromGeneratorOutput } from './shuffle.js';
 import { extractContext } from '../util/context.js';
 
 export type RunPlan = {
@@ -24,8 +29,6 @@ export type RunPlan = {
 };
 
 export type EmitFn = (e: PipelineEvent) => void;
-
-const PICK_RE = /선택\s*→\s*\*\*([AB])\*\*/;
 
 function ts(): number {
   return Date.now();
@@ -76,6 +79,72 @@ async function ensureErrorNotes(notesPath: string): Promise<string> {
   }
 }
 
+// ── Markdown rendering for human-readable artifacts ──────────────────────────
+
+function renderReviewMd(out: ReviewerOutput): string {
+  const lines: string[] = ['# Review\n'];
+  for (const it of out.items) {
+    const sev = it.severity ? ` _(${it.severity})_` : '';
+    lines.push(`\n## ${it.r}: ${it.title}${sev}\n`);
+    lines.push(`- **Concern**: ${it.concern}`);
+    if (it.citations.length > 0) {
+      lines.push(`- **Citations** (${it.citations.length}):`);
+      it.citations.forEach((c, i) => {
+        const note = c.note ? ` — ${c.note}` : '';
+        lines.push(`  ${i + 1}. \`${c.file}\`${note}`);
+        lines.push('     ```latex');
+        lines.push('     ' + c.snippet.split('\n').join('\n     '));
+        lines.push('     ```');
+      });
+    }
+  }
+  return lines.join('\n') + '\n';
+}
+
+function renderChangesMd(items: RoundItem[]): string {
+  const lines: string[] = ['# Changes\n'];
+  for (const it of items) {
+    lines.push(`\n## ${it.r} — ${it.rule}\n`);
+    lines.push(`**Rationale**: ${it.rationale}\n`);
+    if (it.edits.length === 0) {
+      lines.push('_(no edits — generator chose to leave this R untouched)_\n');
+      continue;
+    }
+    lines.push(`**Edits** (${it.edits.length}):\n`);
+    it.edits.forEach((e, i) => {
+      const num = it.edits.length > 1 ? `### ${i + 1}/${it.edits.length} ` : '### ';
+      lines.push(`${num}\`${e.file}\`\n`);
+      lines.push('**원문**\n');
+      lines.push('```latex');
+      lines.push(e.original);
+      lines.push('```\n');
+      lines.push('**수정**\n');
+      lines.push('```latex');
+      lines.push(e.modified);
+      lines.push('```\n');
+    });
+  }
+  return lines.join('\n');
+}
+
+function renderVerdictMd(out: DiscriminatorOutput, blindMap: Map<string, { A: string; B: string }>): string {
+  const lines: string[] = ['# Verdict\n'];
+  for (const it of out.items) {
+    const map = blindMap.get(it.r);
+    const pickKind = map ? map[it.r === 'A' ? 'A' : it.pick] : null;
+    void pickKind;
+    lines.push(`\n## ${it.r}: 선택 → **${it.pick}**${map ? ` _(=${map[it.pick]})_` : ''}\n`);
+    lines.push(`- **사유**: ${it.reason}`);
+    lines.push(`- **탈락 사유**: ${it.loserReason}`);
+  }
+  if (out.summary) {
+    lines.push(`\n---\n\n## 요약\n\n${out.summary}\n`);
+  }
+  return lines.join('\n') + '\n';
+}
+
+// ── Per-round orchestration ──────────────────────────────────────────────────
+
 async function runOneRound(
   plan: RunPlan,
   roundIdx: number,
@@ -91,11 +160,8 @@ async function runOneRound(
   log(emit, 'review', 'cyan', `${tag} ${roundId}`);
   log(emit, 'review', 'dim', `섹션 ${sections.length}개 · ${persona} · ${model}`);
 
-  // Always re-read sections so the prior round's edits can show up. (When we
-  // wire Apply, this matters; for now both behaviors are equivalent.)
   const paperInput = await buildPaperInput(project.latex_root, sections);
 
-  // Stash run metadata so the dashboard/workspace can recover persona/model/sections.
   const meta = {
     persona,
     model,
@@ -109,10 +175,10 @@ async function runOneRound(
   const reviewerSys = await loadReviewerPrompt(persona);
   const reviewerInput =
     `# 리뷰 대상 논문\n\n` +
-    `아래 섹션들을 전체적으로 리뷰해주세요.\n` +
-    `각 리뷰 항목에 해당 섹션 파일명을 반드시 명시해주세요.\n\n` +
+    `아래 섹션들을 전체적으로 리뷰하여 시스템 프롬프트의 JSON 스키마에 맞게 응답하라.\n\n` +
     paperInput;
-  const reviewMd = await runClaude({
+
+  const reviewerOut = await runClaudeJson<ReviewerOutput>({
     model,
     systemPrompt: reviewerSys,
     input: reviewerInput,
@@ -121,28 +187,36 @@ async function runOneRound(
       if (stream === 'stderr') log(emit, 'review', 'red', chunk.trimEnd());
     },
   });
-  await fs.writeFile(path.join(roundDir, '1_review.md'), reviewMd, 'utf8');
-  const reviewBlocks = parseRBlocks(reviewMd);
-  for (const b of reviewBlocks) {
-    const tail = b.headerTail.trim();
+
+  await fs.writeFile(
+    path.join(roundDir, '1_review.json'),
+    JSON.stringify(reviewerOut, null, 2),
+    'utf8',
+  );
+  await fs.writeFile(path.join(roundDir, '1_review.md'), renderReviewMd(reviewerOut), 'utf8');
+  for (const b of reviewerOut.items) {
     emit({
       stage: 'review',
       type: 'item',
-      r: b.rid,
+      r: b.r,
+      title: b.title,
       ts: ts(),
-      ...(tail ? { title: tail } : {}),
     });
   }
-  log(emit, 'review', 'green', `${tag} ✓ ${reviewBlocks.length}개 R 항목`);
+  log(emit, 'review', 'green', `${tag} ✓ ${reviewerOut.items.length}개 R 항목`);
 
   // ── Step 2 — Generator ─────────────────────────────────────
   log(emit, 'changes', 'cyan', `${tag} [2/4] Generator`);
   const generatorSys = await loadGeneratorPrompt();
   const errorNotes = await ensureErrorNotes(project.error_notes_path);
   const generatorInput =
-    `## 리뷰 결과\n\n${reviewMd}\n\n---\n\n# 원본 논문 섹션들\n\n${paperInput}` +
-    (errorNotes.trim() ? `\n\n---\n\n## 오답노트 (이전 라운드 참고용)\n\n${errorNotes}` : '');
-  const changesMd = await runClaude({
+    `## 리뷰 결과 (JSON)\n\n\`\`\`json\n${JSON.stringify(reviewerOut, null, 2)}\n\`\`\`\n\n` +
+    `---\n\n# 원본 논문 섹션들\n\n${paperInput}` +
+    (errorNotes.trim()
+      ? `\n\n---\n\n## 오답노트 (이전 라운드 참고용)\n\n${errorNotes}`
+      : '');
+
+  const generatorOut = await runClaudeJson<GeneratorOutput>({
     model,
     systemPrompt: generatorSys,
     input: generatorInput,
@@ -151,54 +225,83 @@ async function runOneRound(
       if (stream === 'stderr') log(emit, 'changes', 'red', chunk.trimEnd());
     },
   });
-  await fs.writeFile(path.join(roundDir, '2_changes.md'), changesMd, 'utf8');
 
-  // Build 2_changes.json with surrounding context so the workspace can render
-  // blind candidates inside their .tex flow without re-reading section files
-  // at view time.
-  const changesItems = parseChangesItems(changesMd);
+  // Build the round's RoundItem list — merge reviewer + generator output and
+  // attach .tex context per edit. We read each section once and reuse.
+  const reviewerByR = new Map(reviewerOut.items.map((it) => [it.r, it]));
   const sectionTexts: Record<string, string> = {};
-  for (const sec of new Set(
-    changesItems
-      .map((it) => it.headerTail.match(/(\d{2}_\w+\.tex)/)?.[1])
-      .filter((s): s is string => !!s),
-  )) {
-    try {
-      sectionTexts[sec] = await readSection(project.latex_root, sec);
-    } catch {
-      // ignore
-    }
-  }
-  const changesJson = changesItems.map((it) => {
-    const sec = it.headerTail.match(/(\d{2}_\w+\.tex)/)?.[1] ?? null;
-    const ctx = sec && sectionTexts[sec]
-      ? extractContext(sectionTexts[sec]!, it.original, it.modified)
-      : null;
-    emit({ stage: 'changes', type: 'pair', r: it.rid, ts: ts() });
-    return {
-      key: `${it.rid}#${it.occurrence}`,
-      rid: it.rid,
-      occurrence: it.occurrence,
-      section: sec,
-      original: it.original,
-      modified: it.modified,
-      context: ctx,
+  const filesNeeded = new Set<string>();
+  for (const it of generatorOut.items) for (const e of it.edits) filesNeeded.add(e.file);
+  await Promise.all(
+    [...filesNeeded].map(async (sec) => {
+      try {
+        sectionTexts[sec] = await readSection(project.latex_root, sec);
+      } catch {
+        // ignore — context will be omitted
+      }
+    }),
+  );
+
+  const items: RoundItem[] = generatorOut.items.map((g) => {
+    const r = reviewerByR.get(g.r);
+    const editsWithContext: Edit[] = g.edits.map((e) => {
+      const src = sectionTexts[e.file];
+      const ctx: ItemContext | null = src ? extractContext(src, e.original, e.modified) : null;
+      return {
+        file: e.file,
+        original: e.original,
+        modified: e.modified,
+        ...(ctx ? { context: ctx } : {}),
+      };
+    });
+    const citations: Citation[] = r?.citations ?? [];
+    const item: RoundItem = {
+      r: g.r,
+      key: g.r,
+      title: r?.title ?? g.rule,
+      ...(r?.severity ? { severity: r.severity } : {}),
+      concern: r?.concern ?? '',
+      citations,
+      rule: g.rule,
+      rationale: g.rationale,
+      edits: editsWithContext,
+      blind: { A: 'original', B: 'modified' },
+      verdict: { pick: 'A', reason: '', loserReason: '' },
     };
+    emit({ stage: 'changes', type: 'pair', r: g.r, editCount: editsWithContext.length, ts: ts() });
+    return item;
   });
+
   await fs.writeFile(
     path.join(roundDir, '2_changes.json'),
-    JSON.stringify(changesJson, null, 2),
+    JSON.stringify({ items }, null, 2),
     'utf8',
   );
-  log(emit, 'changes', 'green', `${tag} ✓ ${changesItems.length}개 수정 쌍`);
+  await fs.writeFile(path.join(roundDir, '2_changes.md'), renderChangesMd(items), 'utf8');
+  log(
+    emit,
+    'changes',
+    'green',
+    `${tag} ✓ ${items.length}개 R · 총 ${items.reduce((a, b) => a + b.edits.length, 0)}개 edit`,
+  );
 
-  // ── Step 3 — Blind shuffle ─────────────────────────────────
+  // ── Step 3 — Blind shuffle (R-level) ─────────────────────────
   log(emit, 'blind', 'cyan', `${tag} [3/4] Blind shuffle`);
-  const shuffle = buildBlindTest(changesItems);
+  const shuffle = buildBlindTest(fromGeneratorOutput(generatorOut));
+  await fs.writeFile(
+    path.join(roundDir, '3_blind.json'),
+    JSON.stringify(shuffle.blindFile, null, 2),
+    'utf8',
+  );
   await fs.writeFile(path.join(roundDir, '3_blind_test.md'), shuffle.blindMd, 'utf8');
-  await fs.writeFile(path.join(roundDir, '3_mapping.txt'), shuffle.mappingTxt, 'utf8');
   for (const p of shuffle.picks) {
-    emit({ stage: 'blind', type: 'map', r: p.rid, mapping: p.mapping, ts: ts() });
+    emit({ stage: 'blind', type: 'map', r: p.r, mapping: p.mapping, ts: ts() });
+  }
+  // attach blind mapping back into items
+  const blindByR = new Map(shuffle.blindFile.items.map((b) => [b.r, b.mapping]));
+  for (const it of items) {
+    const m = blindByR.get(it.r);
+    if (m) it.blind = m;
   }
   log(emit, 'blind', 'green', `${tag} ✓ ${shuffle.picks.length}개 매핑`);
 
@@ -207,7 +310,8 @@ async function runOneRound(
   const discriminatorSys = await loadDiscriminatorPrompt();
   const discriminatorInput =
     `## 블라인드 테스트\n\n${shuffle.blindMd}\n\n---\n\n# 전체 논문 문맥 (참고용)\n\n${paperInput}`;
-  const verdictMd = await runClaude({
+
+  const verdictOut = await runClaudeJson<DiscriminatorOutput>({
     model,
     systemPrompt: discriminatorSys,
     input: discriminatorInput,
@@ -216,14 +320,43 @@ async function runOneRound(
       if (stream === 'stderr') log(emit, 'verdict', 'red', chunk.trimEnd());
     },
   });
-  await fs.writeFile(path.join(roundDir, '4_verdict.md'), verdictMd, 'utf8');
+  await fs.writeFile(
+    path.join(roundDir, '4_verdict.json'),
+    JSON.stringify(verdictOut, null, 2),
+    'utf8',
+  );
+  const blindMapForRender = new Map(
+    shuffle.blindFile.items.map((b) => [b.r, b.mapping] as const),
+  );
+  await fs.writeFile(
+    path.join(roundDir, '4_verdict.md'),
+    renderVerdictMd(verdictOut, blindMapForRender),
+    'utf8',
+  );
 
-  const verdictBlocks = parseRBlocks(verdictMd);
-  for (const b of verdictBlocks) {
-    const pick = (b.headerTail + '\n' + b.body).match(PICK_RE)?.[1] as Side | undefined;
-    if (pick) emit({ stage: 'verdict', type: 'pick', r: b.rid, pick, ts: ts() });
+  // attach verdict back into items + emit events
+  const verdictByR = new Map(verdictOut.items.map((v) => [v.r, v]));
+  for (const it of items) {
+    const v = verdictByR.get(it.r);
+    if (v) {
+      it.verdict = { pick: v.pick, reason: v.reason, loserReason: v.loserReason };
+      emit({ stage: 'verdict', type: 'pick', r: it.r, pick: v.pick, ts: ts() });
+    }
   }
-  log(emit, 'verdict', 'green', `${tag} ✓ ${verdictBlocks.length}개 판정`);
+  // re-write 2_changes.json now that we have blind + verdict glued onto items
+  await fs.writeFile(
+    path.join(roundDir, '2_changes.json'),
+    JSON.stringify(
+      {
+        items,
+        ...(verdictOut.summary ? { summary: verdictOut.summary } : {}),
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+  log(emit, 'verdict', 'green', `${tag} ✓ ${verdictOut.items.length}개 판정`);
 
   return roundId;
 }
@@ -247,6 +380,11 @@ export async function runPipeline(
     emit({ stage: 'done', type: 'complete', round_id: 'dry-run', ts: ts() });
     return [];
   }
+
+  // Touch runClaude so the symbol is referenced (it's used internally by
+  // runClaudeJson, but TS would otherwise allow tree-shake removal in some
+  // bundlers).
+  void runClaude;
 
   const roundIds: string[] = [];
   for (let i = 1; i <= plan.rounds; i++) {

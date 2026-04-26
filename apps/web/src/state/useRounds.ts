@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { RoundSummary } from '@paper-refine/shared';
 import { api } from '../lib/api';
 
@@ -7,32 +7,41 @@ export function useRounds(projectId: string | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const reload = useCallback(async () => {
     if (!projectId) {
       setRounds([]);
       return;
     }
-    let alive = true;
     setLoading(true);
     setError(null);
-    api
-      .listRounds(projectId)
-      .then((r) => {
-        if (!alive) return;
-        setRounds(r);
-      })
-      .catch((err) => {
-        if (!alive) return;
-        setError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        if (!alive) return;
-        setLoading(false);
-      });
+    try {
+      const r = await api.listRounds(projectId);
+      setRounds(r);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    let alive = true;
+    void reload().then(() => {
+      if (!alive) return;
+    });
     return () => {
       alive = false;
     };
-  }, [projectId]);
+  }, [reload]);
 
-  return { rounds, loading, error };
+  const removeRound = useCallback(
+    async (id: string) => {
+      if (!projectId) return;
+      await api.deleteRound(projectId, id);
+      setRounds((prev) => prev.filter((r) => r.id !== id));
+    },
+    [projectId],
+  );
+
+  return { rounds, loading, error, reload, removeRound };
 }

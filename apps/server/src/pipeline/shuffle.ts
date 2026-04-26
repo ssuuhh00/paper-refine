@@ -1,90 +1,91 @@
-import type { BlindKind, Side } from '@paper-refine/shared';
-import { parseRBlocks } from '../parse/sections.js';
+import type {
+  BlindFile,
+  BlindKind,
+  Edit,
+  GeneratorOutput,
+  Side,
+} from '@paper-refine/shared';
 
-const CODE_LATEX_RE = /```latex\n([\s\S]*?)```/g;
-
-type ChangesItem = {
-  rid: string;
-  occurrence: number;
-  ridDisplay: string;
-  headerTail: string;
-  original: string;
-  modified: string;
+export type ChangesItem = {
+  r: string;
+  rule: string;
+  rationale: string;
+  edits: Pick<Edit, 'file' | 'original' | 'modified'>[];
 };
-
-export function parseChangesItems(changesText: string): ChangesItem[] {
-  const blocks = parseRBlocks(changesText);
-  const out: ChangesItem[] = [];
-  for (const b of blocks) {
-    CODE_LATEX_RE.lastIndex = 0;
-    const codes: string[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = CODE_LATEX_RE.exec(b.body)) !== null) codes.push(m[1]!.trim());
-    if (codes.length < 2) continue;
-    const ridDisplay =
-      b.declared || b.occurrence > 1 ? `${b.rid}-${b.occurrence}` : b.rid;
-    out.push({
-      rid: b.rid,
-      occurrence: b.occurrence,
-      ridDisplay,
-      headerTail: b.headerTail,
-      original: codes[0]!,
-      modified: codes[1]!,
-    });
-  }
-  return out;
-}
 
 export type ShuffleResult = {
   blindMd: string;
-  mappingTxt: string;
-  picks: { rid: string; occurrence: number; mapping: Record<Side, BlindKind> }[];
+  blindFile: BlindFile;
+  picks: { r: string; mapping: Record<Side, BlindKind> }[];
 };
 
+/** Convert the generator JSON output to the internal ChangesItem list. */
+export function fromGeneratorOutput(out: GeneratorOutput): ChangesItem[] {
+  return out.items.map((it) => ({
+    r: it.r,
+    rule: it.rule,
+    rationale: it.rationale,
+    edits: it.edits,
+  }));
+}
+
 /**
- * Builds the blind A/B test markdown and the mapping that will be hidden from
- * the discriminator. Mirrors the Python heredoc in the original refine.sh.
+ * Render one candidate (original or modified) for a multi-edit R as a sequence
+ * of file-tagged LaTeX snippets. The discriminator must see all of an R's
+ * edits as a single package because a verdict applies to the whole R.
+ */
+function renderCandidate(
+  edits: Pick<Edit, 'file' | 'original' | 'modified'>[],
+  kind: BlindKind,
+): string {
+  if (edits.length === 0) return '_(빈 수정안)_';
+  const parts: string[] = [];
+  edits.forEach((e, i) => {
+    const num = edits.length > 1 ? `**(${i + 1}/${edits.length})** ` : '';
+    parts.push(`${num}\`${e.file}\`\n\n\`\`\`latex\n${kind === 'original' ? e.original : e.modified}\n\`\`\``);
+  });
+  return parts.join('\n\n');
+}
+
+/**
+ * Builds the blind A/B test markdown and the per-R mapping kept hidden from
+ * the discriminator. Each R becomes one block with two candidate clusters; the
+ * mapping flips A↔B at random so the discriminator can't infer which side is
+ * the original.
  */
 export function buildBlindTest(
   items: ChangesItem[],
   rng: () => number = Math.random,
 ): ShuffleResult {
   const blindLines = ['# Blind Test\n'];
-  const mappingLines: string[] = [];
+  const blindFile: BlindFile = { items: [] };
   const picks: ShuffleResult['picks'] = [];
 
   for (const item of items) {
+    if (item.edits.length === 0) continue;
+
     let aKind: BlindKind;
     let bKind: BlindKind;
-    let versionA: string;
-    let versionB: string;
     if (rng() < 0.5) {
       aKind = 'original';
       bKind = 'modified';
-      versionA = item.original;
-      versionB = item.modified;
     } else {
       aKind = 'modified';
       bKind = 'original';
-      versionA = item.modified;
-      versionB = item.original;
     }
-    const ridLabel =
-      item.occurrence > 1 ? `${item.rid}-${item.occurrence}` : item.rid;
-    mappingLines.push(`${ridLabel}:A=${aKind},B=${bKind}`);
-    picks.push({
-      rid: item.rid,
-      occurrence: item.occurrence,
-      mapping: { A: aKind, B: bKind },
-    });
-    blindLines.push(`\n## ${ridLabel}${item.headerTail}\n`);
-    blindLines.push(`\n### 버전 A\n\`\`\`latex\n${versionA}\n\`\`\`\n`);
-    blindLines.push(`\n### 버전 B\n\`\`\`latex\n${versionB}\n\`\`\`\n`);
+
+    const mapping = { A: aKind, B: bKind };
+    blindFile.items.push({ r: item.r, mapping });
+    picks.push({ r: item.r, mapping });
+
+    blindLines.push(`\n## ${item.r} — ${item.rule}\n`);
+    blindLines.push(`\n### 버전 A\n\n${renderCandidate(item.edits, aKind)}\n`);
+    blindLines.push(`\n### 버전 B\n\n${renderCandidate(item.edits, bKind)}\n`);
   }
 
   return {
     blindMd: blindLines.join('\n'),
-    mappingTxt: mappingLines.join('\n') + '\n',
+    blindFile,
     picks,
   };
 }

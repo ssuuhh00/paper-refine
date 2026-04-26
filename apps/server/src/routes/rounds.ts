@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { ApplyRequest, ApplyResponse, DecisionsPatch } from '@paper-refine/shared';
 import { projectStore } from '../store/projects.js';
-import { listRoundsInDir, loadFullRound, patchDecisions } from '../parse/round.js';
+import { deleteRound, listRoundsInDir, loadFullRound, patchDecisions } from '../parse/round.js';
 import { applyRound } from '../pipeline/apply.js';
 
 export const roundsRoutes: FastifyPluginAsync = async (app) => {
@@ -41,6 +41,19 @@ export const roundsRoutes: FastifyPluginAsync = async (app) => {
     const merged = await patchDecisions(project, req.params.id, req.body);
     return { decisions: merged };
   });
+
+  app.delete<{ Params: { id: string }; Querystring: { project_id?: string } }>(
+    '/rounds/:id',
+    async (req, reply) => {
+      const projectId = req.query.project_id;
+      if (!projectId) return reply.status(400).send({ error: 'project_id required' });
+      const project = await projectStore.get(projectId);
+      if (!project) return reply.status(404).send({ error: 'project not found' });
+      const ok = await deleteRound(project, req.params.id);
+      if (!ok) return reply.status(404).send({ error: 'round not found' });
+      return { ok: true as const };
+    },
+  );
 
   app.post<{
     Params: { id: string };

@@ -15,6 +15,13 @@ import { useRound } from '../state/useRound';
 
 type Filter = 'all' | 'pending' | 'reject';
 
+function primarySection(item: RoundItem): string {
+  const set = new Set(item.edits.map((e) => e.file));
+  if (set.size === 0) return '?';
+  if (set.size === 1) return [...set][0]!;
+  return 'multi';
+}
+
 export function WorkspacePage() {
   const { roundId } = useParams<{ roundId: string }>();
   const { current } = useProjects();
@@ -29,30 +36,32 @@ export function WorkspacePage() {
   const [filter, setFilter] = useState<Filter>('all');
   const [showApply, setShowApply] = useState(false);
 
-  // initialize active item: first pending if any, else first
   useEffect(() => {
     if (!round || activeKey) return;
-    const firstPending = round.items.find((i) => round.decisions[i.key]?.state === 'pending');
-    setActiveKey((firstPending ?? round.items[0])?.key ?? null);
+    const firstPending = round.items.find((i) => round.decisions[i.r]?.state === 'pending');
+    setActiveKey((firstPending ?? round.items[0])?.r ?? null);
   }, [round, activeKey]);
 
   const filteredItems = useMemo(() => {
     if (!round) return [];
     return round.items.filter((i) => {
-      const d = round.decisions[i.key]?.state ?? 'pending';
+      const d = round.decisions[i.r]?.state ?? 'pending';
       if (filter === 'pending') return d === 'pending';
       if (filter === 'reject') return d === 'reject';
       return true;
     });
   }, [round, filter]);
 
-  const item = useMemo(() => round?.items.find((i) => i.key === activeKey) ?? null, [round, activeKey]);
+  const item = useMemo(
+    () => round?.items.find((i) => i.r === activeKey) ?? null,
+    [round, activeKey],
+  );
 
   const counts = useMemo(() => {
     const acc = { apply: 0, skip: 0, reject: 0, pending: 0 };
     if (!round) return acc;
     for (const it of round.items) {
-      const s = (round.decisions[it.key]?.state ?? 'pending') as DecisionState;
+      const s = (round.decisions[it.r]?.state ?? 'pending') as DecisionState;
       acc[s]++;
     }
     return acc;
@@ -60,9 +69,9 @@ export function WorkspacePage() {
 
   const moveItem = (delta: number) => {
     if (!round || !activeKey) return;
-    const idx = round.items.findIndex((i) => i.key === activeKey);
+    const idx = round.items.findIndex((i) => i.r === activeKey);
     const next = round.items[Math.max(0, Math.min(round.items.length - 1, idx + delta))];
-    if (next) setActiveKey(next.key);
+    if (next) setActiveKey(next.r);
   };
 
   const goToStep = (k: StepKey) => {
@@ -78,16 +87,15 @@ export function WorkspacePage() {
     if (next) goToStep(next.k);
   };
 
-  // keyboard
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
       if (!item) return;
       const k = e.key.toLowerCase();
-      if (k === 'a') setDecision(item.key, { state: 'apply' });
-      else if (k === 's') setDecision(item.key, { state: 'skip' });
-      else if (k === 'r') setDecision(item.key, { state: 'reject' });
+      if (k === 'a') setDecision(item.r, { state: 'apply' });
+      else if (k === 's') setDecision(item.r, { state: 'skip' });
+      else if (k === 'r') setDecision(item.r, { state: 'reject' });
       else if (e.key === 'ArrowLeft') moveItem(-1);
       else if (e.key === 'ArrowRight') moveItem(1);
       else if (e.key === 'ArrowUp') moveStep(-1);
@@ -132,12 +140,12 @@ export function WorkspacePage() {
     );
   }
 
-  const decision = round.decisions[item.key] ?? { state: 'pending' as const };
+  const decision = round.decisions[item.r] ?? { state: 'pending' as const };
   const recommendsModified = item.blind[item.verdict.pick] === 'modified';
+  const itemSection = primarySection(item);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      {/* sub bar — sticky */}
       <div
         style={{
           position: 'sticky',
@@ -190,7 +198,6 @@ export function WorkspacePage() {
       </div>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        {/* sidebar */}
         <aside
           style={{
             width: 280,
@@ -237,15 +244,15 @@ export function WorkspacePage() {
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
             {filteredItems.map((it) => {
-              const isActive = it.key === activeKey;
-              const dec = round.decisions[it.key];
+              const isActive = it.r === activeKey;
+              const dec = round.decisions[it.r];
               const d = (dec?.state ?? 'pending') as DecisionState;
               const isApplied = !!dec?.applied_at;
               const recModified = it.blind[it.verdict.pick] === 'modified';
               return (
                 <button
-                  key={it.key}
-                  onClick={() => setActiveKey(it.key)}
+                  key={it.r}
+                  onClick={() => setActiveKey(it.r)}
                   style={{
                     width: '100%',
                     padding: '10px 14px',
@@ -276,7 +283,12 @@ export function WorkspacePage() {
                         color: 'var(--ink)',
                       }}
                     >
-                      {it.key}
+                      {it.r}
+                      {it.edits.length > 1 && (
+                        <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>
+                          {' ·'} {it.edits.length} edits
+                        </span>
+                      )}
                     </span>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                       {isApplied && (
@@ -328,7 +340,6 @@ export function WorkspacePage() {
           </div>
         </aside>
 
-        {/* main scroll */}
         <main style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
           <div style={{ padding: '24px 32px 60px', maxWidth: 1100, margin: '0 auto' }}>
             <div style={{ marginBottom: 18 }}>
@@ -343,15 +354,17 @@ export function WorkspacePage() {
                   color: 'var(--ink-3)',
                 }}
               >
-                <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{item.key}</span>
-                {item.location && (
+                <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{item.r}</span>
+                {item.severity && (
                   <>
                     <span>·</span>
-                    <span>{item.location}</span>
+                    <span style={{ color: severityColor(item.severity) }}>{item.severity}</span>
                   </>
                 )}
                 <span>·</span>
-                <SectionTag id={item.section} />
+                <SectionTag id={itemSection} />
+                <span>·</span>
+                <span>{item.edits.length} edits</span>
                 {decision.applied_at && (
                   <span
                     title={`applied at ${decision.applied_at}`}
@@ -387,8 +400,9 @@ export function WorkspacePage() {
               <ReviewView item={item} />
             </Section>
 
-            <Section step="2" stepKey="changes" label="Changes" ko="원문 ↔ 수정안">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <Section step="2" stepKey="changes" label="Changes" ko={`원문 ↔ 수정안 (${item.edits.length})`}>
+              <RuleHeader item={item} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '14px 0 10px' }}>
                 {(['split', 'unified'] as const).map((m) => (
                   <button
                     key={m}
@@ -408,38 +422,45 @@ export function WorkspacePage() {
                   </button>
                 ))}
               </div>
-              {item.original || item.modified ? (
-                <DiffViewer original={item.original} modified={item.modified} mode={diffMode} />
-              ) : (
+              {item.edits.length === 0 ? (
                 <Card style={{ padding: 14, color: 'var(--ink-3)', fontSize: 12.5 }}>
-                  원문/수정안이 비어 있습니다 (Generator 단계 결과 누락).
+                  이 R에 대한 edit이 비어 있습니다 (Generator가 수정 불필요로 판단).
                 </Card>
-              )}
-              {item.rationale && (
-                <div
-                  style={{
-                    marginTop: 14,
-                    padding: '10px 14px',
-                    background: 'var(--surface-2)',
-                    borderRadius: 6,
-                    fontSize: 13,
-                    lineHeight: 1.55,
-                    color: 'var(--ink-2)',
-                  }}
-                >
-                  <div
-                    style={{
-                      fontFamily: 'var(--mono)',
-                      fontSize: 10.5,
-                      color: 'var(--ink-3)',
-                      letterSpacing: 0.5,
-                      textTransform: 'uppercase',
-                      marginBottom: 4,
-                    }}
-                  >
-                    수정 근거
-                  </div>
-                  {item.rationale}
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                  {item.edits.map((edit, i) => (
+                    <div key={i}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          marginBottom: 8,
+                          fontFamily: 'var(--mono)',
+                          fontSize: 11,
+                          color: 'var(--ink-3)',
+                        }}
+                      >
+                        <span
+                          style={{
+                            padding: '2px 6px',
+                            background: 'var(--surface-2)',
+                            borderRadius: 3,
+                            color: 'var(--ink-2)',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {i + 1}/{item.edits.length}
+                        </span>
+                        <SectionTag id={edit.file} full />
+                      </div>
+                      <DiffViewer
+                        original={edit.original}
+                        modified={edit.modified}
+                        mode={diffMode}
+                      />
+                    </div>
+                  ))}
                 </div>
               )}
             </Section>
@@ -504,7 +525,7 @@ export function WorkspacePage() {
                       marginBottom: 4,
                     }}
                   >
-                    사유
+                    사유 — 이 R의 {item.edits.length}개 edit 묶음 전체에 대한 판정
                   </div>
                   <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--ink)' }}>
                     {(recommendsModified ? item.verdict.reason : item.verdict.loserReason) ||
@@ -535,7 +556,9 @@ export function WorkspacePage() {
                   최종 추천
                 </span>
                 <span style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 500 }}>
-                  {recommendsModified ? '수정안 채택' : '원문 유지'}
+                  {recommendsModified
+                    ? `수정안 채택 — ${item.edits.length}개 edit 일괄 반영`
+                    : '원문 유지 (수정안 거부)'}
                 </span>
               </div>
             </Section>
@@ -548,7 +571,7 @@ export function WorkspacePage() {
             decision={decision}
             showKbdHints
             onDecide={(state, extra) => {
-              setDecision(item.key, {
+              setDecision(item.r, {
                 state,
                 ...(extra?.reason !== undefined ? { reason: extra.reason } : {}),
                 ...(extra?.memo !== undefined ? { memo: extra.memo } : {}),
@@ -624,54 +647,151 @@ function Section({
 }
 
 function ReviewView({ item }: { item: RoundItem }) {
+  const hasContent = item.concern || item.citations.length > 0;
+  if (!hasContent) {
+    return (
+      <Card style={{ padding: 14, color: 'var(--ink-3)', fontSize: 12.5 }}>
+        리뷰 데이터가 비어 있습니다.
+      </Card>
+    );
+  }
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 12 }}>
-      {item.location && (
-        <>
-          <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)' }}>위치</div>
-          <div style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{item.location}</div>
-        </>
-      )}
-      {item.cite && (
-        <>
-          <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)' }}>인용</div>
-          <blockquote
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {item.concern && (
+        <div>
+          <div
             style={{
-              margin: 0,
-              padding: '10px 14px',
-              background: 'var(--surface-2)',
-              borderLeft: '3px solid var(--ink-4)',
               fontFamily: 'var(--mono)',
-              fontSize: 12,
-              lineHeight: 1.55,
-              color: 'var(--ink-2)',
+              fontSize: 10.5,
+              color: 'var(--ink-3)',
+              letterSpacing: 0.6,
+              textTransform: 'uppercase',
+              marginBottom: 6,
             }}
           >
-            {item.cite}
-          </blockquote>
-        </>
+            Concern
+          </div>
+          <div style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--ink)' }}>{item.concern}</div>
+        </div>
       )}
-      {item.issue && (
-        <>
-          <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)' }}>지적</div>
-          <div style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--ink)' }}>{item.issue}</div>
-        </>
-      )}
-      {!item.location && !item.cite && !item.issue && (
-        <div
-          style={{
-            gridColumn: '1 / -1',
-            padding: 14,
-            color: 'var(--ink-3)',
-            fontSize: 12.5,
-            fontFamily: 'var(--mono)',
-          }}
-        >
-          (review.md에서 이 항목 정보를 찾지 못했습니다.)
+      {item.citations.length > 0 && (
+        <div>
+          <div
+            style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 10.5,
+              color: 'var(--ink-3)',
+              letterSpacing: 0.6,
+              textTransform: 'uppercase',
+              marginBottom: 8,
+            }}
+          >
+            Citations · {item.citations.length}개 위치
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {item.citations.map((c, i) => (
+              <Card key={i} style={{ padding: 12 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginBottom: 6,
+                    fontFamily: 'var(--mono)',
+                    fontSize: 11,
+                    color: 'var(--ink-3)',
+                  }}
+                >
+                  <span
+                    style={{
+                      padding: '2px 6px',
+                      background: 'var(--surface-2)',
+                      borderRadius: 3,
+                      fontWeight: 600,
+                      color: 'var(--ink-2)',
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  <SectionTag id={c.file} full />
+                  {c.note && (
+                    <span style={{ color: 'var(--ink-3)', fontFamily: 'var(--sans)' }}>
+                      — {c.note}
+                    </span>
+                  )}
+                </div>
+                <blockquote
+                  style={{
+                    margin: 0,
+                    padding: '8px 12px',
+                    background: 'var(--surface-2)',
+                    borderLeft: '3px solid var(--ink-4)',
+                    fontFamily: 'var(--mono)',
+                    fontSize: 12,
+                    lineHeight: 1.55,
+                    color: 'var(--ink-2)',
+                    whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  {c.snippet}
+                </blockquote>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
     </div>
   );
+}
+
+function RuleHeader({ item }: { item: RoundItem }) {
+  if (!item.rule && !item.rationale) return null;
+  return (
+    <Card style={{ padding: 14 }}>
+      {item.rule && (
+        <div style={{ marginBottom: item.rationale ? 8 : 0 }}>
+          <div
+            style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 10.5,
+              color: 'var(--ink-3)',
+              letterSpacing: 0.5,
+              textTransform: 'uppercase',
+              marginBottom: 4,
+            }}
+          >
+            Rule
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>{item.rule}</div>
+        </div>
+      )}
+      {item.rationale && (
+        <div>
+          <div
+            style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 10.5,
+              color: 'var(--ink-3)',
+              letterSpacing: 0.5,
+              textTransform: 'uppercase',
+              marginBottom: 4,
+            }}
+          >
+            Rationale
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--ink-2)' }}>
+            {item.rationale}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function severityColor(s: NonNullable<RoundItem['severity']>): string {
+  if (s === 'critical') return 'var(--warn)';
+  if (s === 'major') return 'var(--accent)';
+  return 'var(--ink-3)';
 }
 
 function displayRoundName(id: string): string {

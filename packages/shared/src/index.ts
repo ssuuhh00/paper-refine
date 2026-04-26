@@ -3,6 +3,7 @@ export type ModelTier = 'haiku' | 'sonnet' | 'opus';
 export type DecisionState = 'apply' | 'skip' | 'reject' | 'pending';
 export type Side = 'A' | 'B';
 export type BlindKind = 'original' | 'modified';
+export type Severity = 'critical' | 'major' | 'minor';
 
 export type Project = {
   id: string;
@@ -19,45 +20,83 @@ export type ProjectInput = Omit<
   Project,
   'id' | 'created_at' | 'updated_at' | 'output_dir' | 'error_notes_path'
 > & {
-  /** Optional override; defaults to <repo>/data/projects/<id>. */
   output_dir?: string;
-  /** Optional override; defaults to <output_dir>/error_notes.md. */
   error_notes_path?: string;
 };
 
 /**
- * Surrounding text from the .tex section file, captured at pipeline time
- * so the user can read the blind candidate in its original flow even after
- * the .tex has been edited.
+ * Surrounding text from the .tex file at the time the pipeline ran. Captured
+ * per-edit so the user can read each candidate in its original flow.
  */
 export type ItemContext = {
   before: string;
   after: string;
-  /** Total bytes captured on each side (before/after may be shorter at file edges). */
   span: number;
 };
 
-export type RoundItem = {
-  /** "R1" — may repeat across items, disambiguate via `key`. */
-  r: string;
-  /** Stable identity within a round: `${r}#${occurrence}`. */
-  key: string;
-  occurrence: number;
-  title: string;
-  location: string;
-  section: string;
-  cite: string;
-  issue: string;
+/**
+ * One concrete textual change. A single R item carries N of these so a
+ * cross-cutting concern (e.g. terminology unification across files) can be
+ * expressed as one decision instead of being shattered into R1.1…R1.N.
+ */
+export type Edit = {
+  /** Section file relative to latex_root (e.g. `00_abstract.tex`). */
+  file: string;
+  /** Exact substring that must exist in the .tex (used for string-replace). */
   original: string;
   modified: string;
+  /** Optional surrounding text — captured by the pipeline at generation time. */
+  context?: ItemContext;
+};
+
+/** A single citation/quote from the reviewer pointing at a problem location. */
+export type Citation = {
+  file: string;
+  /** Quoted text from the .tex. */
+  snippet: string;
+  /** Why this location instances the concern. */
+  note?: string;
+};
+
+/**
+ * One review item shared across all four pipeline stages. The `r` field is
+ * unique inside a round (each round runs a single persona, so there's no
+ * cross-persona collision). decisions.json is keyed by `r`.
+ */
+export type RoundItem = {
+  /** "R1" — unique within the round. */
+  r: string;
+  /** Stable lookup key — kept identical to `r` for forward compatibility. */
+  key: string;
+  /** Short headline. */
+  title: string;
+  severity?: Severity;
+
+  // ── Reviewer output ──────────────────────────────────────────
+  /** Detailed description of the problem. */
+  concern: string;
+  /** All locations the reviewer flagged for this single concern. */
+  citations: Citation[];
+
+  // ── Generator output ─────────────────────────────────────────
+  /** Rule the generator applies (e.g. "unify terminology to '미들웨어'"). */
+  rule: string;
+  /** Why this rule resolves the concern. */
   rationale: string;
+  /** Concrete edits — usually 1:1 with citations. */
+  edits: Edit[];
+
+  // ── Blind shuffle (set by backend, never the LLM) ────────────
   blind: Record<Side, BlindKind>;
+
+  // ── Discriminator output (R-level, one verdict for all edits) ─
   verdict: {
     pick: Side;
+    /** Reason from the *modified* perspective. */
     reason: string;
+    /** Same reason flipped to address the loser. */
     loserReason: string;
   };
-  context?: ItemContext;
 };
 
 export type Decision = {
@@ -66,15 +105,19 @@ export type Decision = {
   reason?: string;
   memo?: string;
   decided_at?: string;
-  /** Set when the apply action wrote this item to the .tex (or appended to error_notes). */
+  /** Set when apply wrote this R's edits to .tex (or appended to error_notes). */
   applied_at?: string;
 };
 
 export type ApplyOutcome = {
-  applied: { key: string; section: string }[];
-  rejected: { key: string; section: string; reason: string }[];
-  errors: { key: string; section: string; error: string }[];
-  skipped: { key: string; reason: string }[];
+  /** R's whose edits were (at least partially) applied. */
+  applied: { r: string; editCount: number; sections: string[] }[];
+  /** R's that were rejected — appended to error_notes. */
+  rejected: { r: string; reason: string }[];
+  /** Edits that failed to apply (per-edit failures inside an otherwise applied R). */
+  errors: { r: string; section: string; error: string }[];
+  /** R's skipped entirely (already applied, no decision, etc.). */
+  skipped: { r: string; reason: string }[];
 };
 
 export type ApplyRequest = {
@@ -97,7 +140,10 @@ export type Round = {
   model: ModelTier | null;
   status: 'in-progress' | 'completed' | 'failed';
   items: RoundItem[];
+  /** Keyed by RoundItem.r. */
   decisions: Record<string, Decision>;
+  /** Optional discriminator-level summary. */
+  summary?: string;
 };
 
 export type DecisionsPatch = Record<string, Decision>;
@@ -118,12 +164,12 @@ export type RoundSummary = {
   display_ts: string;
   project_id: string;
   section: string;
-  /** Null for legacy rounds without meta.json. */
   persona: Persona | null;
-  /** Null for legacy rounds without meta.json. */
   model: ModelTier | null;
   status: 'in-progress' | 'completed' | 'failed';
   itemCount: number;
+  /** Total individual edits across all R items. */
+  editCount: number;
   decided: number;
   applyCount: number;
   skipCount: number;
@@ -133,17 +179,14 @@ export type RoundSummary = {
 };
 
 export type ErrorNote = {
-  /** Round directory id (`<ts>_round_NNN`). */
   round: string;
-  /** Item key — same form as `RoundItem.key` (e.g. `R3#2`) so links can deep-link. */
+  /** Same form as RoundItem.r — used for deep linking. */
   key: string;
-  /** Display label (R3 / R3-2 etc.) */
   r: string;
+  /** Primary section if the R was scoped, else 'multi'. */
   section: string;
-  /** Null for legacy rounds without meta.json. */
   persona: Persona | null;
   source: 'discriminator' | 'user';
-  /** ISO date (YYYY-MM-DD). */
   date: string;
   reason: string;
   title: string;
@@ -188,9 +231,48 @@ export type PipelineStage = 'review' | 'changes' | 'blind' | 'verdict' | 'done';
 
 export type PipelineEvent =
   | { stage: PipelineStage; type: 'log'; level: 'dim' | 'norm' | 'cyan' | 'green' | 'yellow' | 'red'; msg: string; ts: number }
-  | { stage: 'review'; type: 'item'; r: string; title?: string; location?: string; ts: number }
-  | { stage: 'changes'; type: 'pair'; r: string; ts: number }
+  | { stage: 'review'; type: 'item'; r: string; title?: string; ts: number }
+  | { stage: 'changes'; type: 'pair'; r: string; editCount: number; ts: number }
   | { stage: 'blind'; type: 'map'; r: string; mapping: Record<Side, BlindKind>; ts: number }
   | { stage: 'verdict'; type: 'pick'; r: string; pick: Side; ts: number }
   | { stage: 'done'; type: 'complete'; round_id: string; ts: number }
   | { stage: PipelineStage; type: 'error'; msg: string; ts: number };
+
+// ── JSON schemas exchanged with the LLM ──────────────────────────────────────
+
+export type ReviewerOutput = {
+  items: Array<{
+    r: string;
+    title: string;
+    severity?: Severity;
+    concern: string;
+    citations: Citation[];
+  }>;
+};
+
+export type GeneratorOutput = {
+  items: Array<{
+    r: string;
+    rule: string;
+    rationale: string;
+    edits: Array<Pick<Edit, 'file' | 'original' | 'modified'>>;
+  }>;
+};
+
+export type DiscriminatorOutput = {
+  items: Array<{
+    r: string;
+    pick: Side;
+    reason: string;
+    loserReason: string;
+  }>;
+  summary?: string;
+};
+
+/** Persisted alongside the round directory (3_blind.json). */
+export type BlindFile = {
+  items: Array<{
+    r: string;
+    mapping: Record<Side, BlindKind>;
+  }>;
+};

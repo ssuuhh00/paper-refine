@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { RoundSummary } from '@paper-refine/shared';
 import { Card } from '../ui/Card';
@@ -7,12 +8,15 @@ import { DecisionDonut } from './DecisionDonut';
 
 type Props = {
   round: RoundSummary;
+  onDelete?: (id: string) => Promise<void> | void;
 };
 
-export function RoundCard({ round }: Props) {
+export function RoundCard({ round, onDelete }: Props) {
   const total = round.itemCount;
   const recModified = round.recommendedModified;
   const recOriginal = Math.max(0, total - recModified);
+  const [deleting, setDeleting] = useState(false);
+  const [hover, setHover] = useState(false);
 
   const counts = {
     apply: round.applyCount,
@@ -21,13 +25,34 @@ export function RoundCard({ round }: Props) {
     pending: round.pendingCount,
   };
 
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!onDelete || deleting) return;
+    const ok = window.confirm(
+      `라운드 ${displayName(round.id)}를 영구 삭제합니다.\n` +
+        `라운드 디렉토리와 그 안의 모든 산출물(decisions 포함)이 사라집니다. 계속할까요?`,
+    );
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await onDelete(round.id);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : String(err));
+      setDeleting(false);
+    }
+  };
+
   return (
     <Card
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
         padding: 14,
         cursor: 'pointer',
         transition: 'border 0.12s',
         position: 'relative',
+        opacity: deleting ? 0.5 : 1,
       }}
     >
       <Link
@@ -35,6 +60,42 @@ export function RoundCard({ round }: Props) {
         style={{ position: 'absolute', inset: 0, zIndex: 1 }}
         aria-label={`open ${round.id}`}
       />
+      {onDelete && (
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          title="라운드 삭제"
+          style={{
+            position: 'absolute',
+            top: 6,
+            right: 6,
+            zIndex: 2,
+            width: 22,
+            height: 22,
+            border: '1px solid var(--border)',
+            background: 'var(--bg)',
+            color: 'var(--ink-3)',
+            borderRadius: 4,
+            cursor: deleting ? 'not-allowed' : 'pointer',
+            fontSize: 14,
+            fontWeight: 600,
+            display: hover || deleting ? 'inline-flex' : 'none',
+            alignItems: 'center',
+            justifyContent: 'center',
+            lineHeight: 1,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget.style.color as string | null) && (e.currentTarget.style.color = 'var(--warn)');
+            (e.currentTarget.style.borderColor as string | null) && (e.currentTarget.style.borderColor = 'var(--warn)');
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--ink-3)';
+            e.currentTarget.style.borderColor = 'var(--border)';
+          }}
+        >
+          ×
+        </button>
+      )}
       <div
         style={{
           display: 'flex',
@@ -101,6 +162,9 @@ export function RoundCard({ round }: Props) {
       >
         <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)' }}>
           R항목 {total}
+          {round.editCount > 0 && total !== round.editCount && (
+            <span style={{ color: 'var(--ink-4)' }}> · {round.editCount} edits</span>
+          )}
         </span>
         {total > 0 && (
           <>

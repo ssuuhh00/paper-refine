@@ -13,7 +13,7 @@ type StatusFilter = 'all' | 'pending' | 'completed';
 
 export function DashboardPage() {
   const { current } = useProjects();
-  const { rounds, loading, error } = useRounds(current?.id ?? null);
+  const { rounds, loading, error, removeRound } = useRounds(current?.id ?? null);
 
   const [personaFilter, setPersonaFilter] = useState<PersonaFilter>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -239,7 +239,7 @@ export function DashboardPage() {
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 {filtered.map((r) => (
-                  <RoundCard key={r.id} round={r} />
+                  <RoundCard key={r.id} round={r} onDelete={removeRound} />
                 ))}
               </div>
             )}

@@ -11,10 +11,9 @@ export type ClaudeRunOptions = {
 };
 
 /**
- * Invokes the local `claude` CLI with the same surface refine.sh used:
+ * Invokes the local `claude` CLI:
  *   claude --print --model {model} --system-prompt {sys}
- * Stdin is the user input; stdout is collected and returned. Stderr is
- * captured into `onChunk` so the UI can surface diagnostics.
+ * Stdin is the user input; stdout is collected and returned.
  */
 export async function runClaude(opts: ClaudeRunOptions): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -84,7 +83,6 @@ export async function runClaude(opts: ClaudeRunOptions): Promise<string> {
   });
 }
 
-/** Quick existence check so we can fail with a friendly error before spawning. */
 export async function checkClaudeAvailable(): Promise<{ ok: boolean; version?: string; error?: string }> {
   return new Promise((resolve) => {
     const child = spawn('claude', ['--version'], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -98,4 +96,55 @@ export async function checkClaudeAvailable(): Promise<{ ok: boolean; version?: s
       else resolve({ ok: false, error: err.trim() || `exit ${code}` });
     });
   });
+}
+
+/**
+ * Strip the most common LLM-side wrappers around a JSON payload:
+ *   - leading prose before the first `{`
+ *   - trailing prose after the matching `}`
+ *   - markdown code fences (```json ... ```)
+ */
+export function extractJson(raw: string): string {
+  let s = raw.trim();
+  // Strip ```json / ``` fences if present.
+  const fence = s.match(/^```(?:json)?\s*\n([\s\S]*?)\n```\s*$/);
+  if (fence) s = fence[1]!.trim();
+  const first = s.indexOf('{');
+  const last = s.lastIndexOf('}');
+  if (first !== -1 && last !== -1 && last > first) {
+    s = s.slice(first, last + 1);
+  }
+  return s;
+}
+
+/**
+ * Run claude and parse stdout as JSON. On parse failure, retry once with the
+ * error appended to the input so the model can self-correct.
+ */
+export async function runClaudeJson<T>(opts: ClaudeRunOptions): Promise<T> {
+  const first = await runClaude(opts);
+  try {
+    return JSON.parse(extractJson(first)) as T;
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    const retryInput =
+      opts.input +
+      '\n\n---\n\n' +
+      '## ⚠ 이전 응답이 유효한 JSON이 아니었음\n\n' +
+      '이전 응답:\n```\n' +
+      first.slice(0, 4000) +
+      (first.length > 4000 ? '\n…(truncated)' : '') +
+      '\n```\n\n' +
+      `파서 에러: ${errMsg}\n\n` +
+      '이번에는 위 시스템 프롬프트의 JSON 스키마를 정확히 지켜, 단일 JSON 객체만 출력하라. 마크다운 펜스, 머리말, 꼬리말 모두 금지.';
+    const second = await runClaude({ ...opts, input: retryInput });
+    try {
+      return JSON.parse(extractJson(second)) as T;
+    } catch (err2) {
+      const e2 = err2 instanceof Error ? err2.message : String(err2);
+      throw new Error(
+        `claude returned non-JSON twice. last error: ${e2}\n\n--- last 600 chars of stdout ---\n${second.slice(-600)}`,
+      );
+    }
+  }
 }

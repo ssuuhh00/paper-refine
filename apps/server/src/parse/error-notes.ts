@@ -1,23 +1,24 @@
 import type { ErrorNote, Project } from '@paper-refine/shared';
 import { listRoundsInDir, loadFullRound } from './round.js';
 
-function ridDisplay(r: string, occurrence: number): string {
-  return occurrence > 1 ? `${r}-${occurrence}` : r;
-}
-
 function dayPart(iso: string): string {
   const i = iso.indexOf('T');
   return i === -1 ? iso : iso.slice(0, i);
 }
 
+/** Pick a single section label for an R: the unique edit file or 'multi'. */
+function rSection(item: { edits?: { file: string }[] }): string {
+  const set = new Set<string>();
+  for (const e of item.edits ?? []) set.add(e.file);
+  if (set.size === 0) return '?';
+  if (set.size === 1) return [...set][0]!;
+  return 'multi';
+}
+
 /**
- * Aggregates rejection signals across all rounds of a project:
- *   - user rejects: decisions.json entries where state === 'reject'
- *   - discriminator rejects: verdict picks that landed on `original`
- *     (i.e. the modified suggestion lost the blind test) — uses loserReason
- *
- * Newest first. Older empty-reason entries still surface so the user can
- * spot patterns even when the reason text wasn't captured.
+ * Aggregate rejection signals across all rounds:
+ *   - user rejects: decisions.json with state === 'reject'
+ *   - discriminator rejects: verdict picked the side mapped to `original`
  */
 export async function aggregateErrorNotes(project: Project): Promise<ErrorNote[]> {
   const summaries = await listRoundsInDir(project.output_dir, project.id);
@@ -28,44 +29,41 @@ export async function aggregateErrorNotes(project: Project): Promise<ErrorNote[]
     if (!round) continue;
 
     for (const item of round.items) {
-      const display = ridDisplay(item.r, item.occurrence);
       const persona = round.persona;
+      const section = rSection(item);
 
-      // user reject
-      const d = round.decisions[item.key];
+      const d = round.decisions[item.r];
       if (d?.state === 'reject') {
         out.push({
           round: s.id,
-          key: item.key,
-          r: display,
-          section: item.section,
+          key: item.r,
+          r: item.r,
+          section,
           persona,
           source: 'user',
           date: dayPart(d.decided_at ?? round.ts),
           reason: d.reason ?? '',
-          title: item.title,
+          title: item.title || item.rule,
         });
       }
 
-      // discriminator reject (kept original = rejected modified)
       const pickKind = item.blind[item.verdict.pick];
       if (pickKind === 'original' && (item.verdict.loserReason || item.verdict.reason)) {
         out.push({
           round: s.id,
-          key: item.key,
-          r: display,
-          section: item.section,
+          key: item.r,
+          r: item.r,
+          section,
           persona,
           source: 'discriminator',
           date: dayPart(round.ts),
           reason: item.verdict.loserReason || item.verdict.reason,
-          title: item.title,
+          title: item.title || item.rule,
         });
       }
     }
   }
 
-  // newest first by round id (which encodes timestamp), then user-before-discriminator
   out.sort((a, b) => {
     if (a.round !== b.round) return a.round < b.round ? 1 : -1;
     if (a.source !== b.source) return a.source === 'user' ? -1 : 1;

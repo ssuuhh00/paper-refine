@@ -28,12 +28,11 @@ export function ApplyModal({
   const [result, setResult] = useState<ApplyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // partition
   const pending: RoundItem[] = [];
   const alreadyApplied: RoundItem[] = [];
   const rejects: RoundItem[] = [];
   for (const it of items) {
-    const d = decisions[it.key];
+    const d = decisions[it.r];
     if (!d) continue;
     if (d.state === 'apply') {
       if (d.applied_at) alreadyApplied.push(it);
@@ -42,6 +41,8 @@ export function ApplyModal({
       rejects.push(it);
     }
   }
+
+  const totalEdits = pending.reduce((acc, it) => acc + it.edits.length, 0);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -100,6 +101,7 @@ export function ApplyModal({
           dryRun={dryRun}
           counts={{
             pending: pending.length,
+            pendingEdits: totalEdits,
             already: alreadyApplied.length,
             rejects: rejects.length,
             applied: result?.applied.length ?? 0,
@@ -128,20 +130,20 @@ export function ApplyModal({
 
           {phase !== 'done' && (
             <>
-              <Group label={`적용 대상 (${pending.length})`}>
-                {pending.length === 0 ? <Empty /> : pending.map((it) => <Row key={it.key} item={it} kind="apply" />)}
+              <Group label={`적용 대상 (${pending.length}개 R · ${totalEdits}개 edit)`}>
+                {pending.length === 0 ? <Empty /> : pending.map((it) => <Row key={it.r} item={it} kind="apply" />)}
               </Group>
               {alreadyApplied.length > 0 && (
                 <Group label={`이미 적용됨 (${alreadyApplied.length})`}>
                   {alreadyApplied.map((it) => (
-                    <Row key={it.key} item={it} kind="already" />
+                    <Row key={it.r} item={it} kind="already" />
                   ))}
                 </Group>
               )}
               {rejects.length > 0 && (
                 <Group label={`오답노트로 (${rejects.length})`}>
                   {rejects.map((it) => (
-                    <Row key={it.key} item={it} kind="reject" reason={decisions[it.key]?.reason} />
+                    <Row key={it.r} item={it} kind="reject" reason={decisions[it.r]?.reason} />
                   ))}
                 </Group>
               )}
@@ -161,7 +163,6 @@ export function ApplyModal({
           onSubmit={submit}
           result={result}
           onAfterApply={() => {
-            // start a fresh preview after a real apply
             setResult(null);
             setPhase('preview');
             setDryRun(true);
@@ -181,16 +182,23 @@ function Header({
 }: {
   phase: Phase;
   dryRun: boolean;
-  counts: { pending: number; already: number; rejects: number; applied: number; errors: number };
+  counts: {
+    pending: number;
+    pendingEdits: number;
+    already: number;
+    rejects: number;
+    applied: number;
+    errors: number;
+  };
   onClose: () => void;
   submitting: boolean;
 }) {
   const subtitle =
     phase === 'done'
-      ? `${counts.applied} applied · ${counts.errors} errors`
+      ? `${counts.applied} R 적용 · ${counts.errors} 에러`
       : phase === 'running'
         ? '실행 중…'
-        : `${counts.pending}개 적용 대기 · ${counts.rejects}개 오답노트로${counts.already ? ` · ${counts.already}개 이미 적용` : ''}${dryRun ? ' · dry-run' : ''}`;
+        : `${counts.pending}개 R (${counts.pendingEdits} edits) 적용 대기 · ${counts.rejects}개 오답노트로${counts.already ? ` · ${counts.already}개 이미 적용` : ''}${dryRun ? ' · dry-run' : ''}`;
   return (
     <div
       style={{
@@ -377,27 +385,41 @@ function ResultView({ result }: { result: ApplyResponse }) {
         {result.applied.length === 0 ? (
           <Empty />
         ) : (
-          result.applied.map((a) => <ResultRow key={a.key} keyName={a.key} section={a.section} kind="ok" />)
+          result.applied.map((a) => (
+            <ResultRow
+              key={a.r}
+              keyName={a.r}
+              section={a.sections.join(', ')}
+              kind="ok"
+              detail={`${a.editCount}개 edit`}
+            />
+          ))
         )}
       </Group>
       {result.errors.length > 0 && (
         <Group label={`에러 (${result.errors.length})`}>
-          {result.errors.map((e) => (
-            <ResultRow key={e.key} keyName={e.key} section={e.section} kind="error" detail={e.error} />
+          {result.errors.map((e, i) => (
+            <ResultRow
+              key={`${e.r}-${i}`}
+              keyName={e.r}
+              section={e.section}
+              kind="error"
+              detail={e.error}
+            />
           ))}
         </Group>
       )}
       {result.rejected.length > 0 && (
         <Group label={`오답노트 추가 (${result.rejected.length})`}>
           {result.rejected.map((r) => (
-            <ResultRow key={r.key} keyName={r.key} section={r.section} kind="reject" detail={r.reason} />
+            <ResultRow key={r.r} keyName={r.r} section="" kind="reject" detail={r.reason} />
           ))}
         </Group>
       )}
       {result.skipped.length > 0 && (
         <Group label={`스킵 (${result.skipped.length})`}>
           {result.skipped.map((s) => (
-            <ResultRow key={s.key} keyName={s.key} section="" kind="skip" detail={s.reason} />
+            <ResultRow key={s.r} keyName={s.r} section="" kind="skip" detail={s.reason} />
           ))}
         </Group>
       )}
@@ -440,6 +462,7 @@ function Row({
 }) {
   const color =
     kind === 'apply' ? 'var(--ok)' : kind === 'reject' ? 'var(--warn)' : 'var(--ink-4)';
+  const sectionList = [...new Set(item.edits.map((e) => e.file))].join(', ');
   return (
     <div
       style={{
@@ -453,18 +476,27 @@ function Row({
     >
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
         <span style={{ fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 700, color: 'var(--accent)' }}>
-          {item.key}
+          {item.r}
         </span>
-        <span style={{ fontSize: 12, color: 'var(--ink)' }}>{item.title || '(제목 없음)'}</span>
+        <span style={{ fontSize: 12, color: 'var(--ink)' }}>{item.title || item.rule || '(제목 없음)'}</span>
         <span style={{ marginLeft: 'auto', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-3)' }}>
-          {item.section}
+          {item.edits.length} edits · {sectionList || '?'}
         </span>
       </div>
-      {kind === 'apply' && (
+      {kind === 'apply' && item.edits[0] && (
         <div style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>
-          <span style={{ color: 'var(--del)' }}>− {item.original.split('\n')[0]?.slice(0, 70)}…</span>
+          <span style={{ color: 'var(--del)' }}>
+            − {item.edits[0].original.split('\n')[0]?.slice(0, 70)}…
+          </span>
           <br />
-          <span style={{ color: 'var(--add)' }}>+ {item.modified.split('\n')[0]?.slice(0, 70)}…</span>
+          <span style={{ color: 'var(--add)' }}>
+            + {item.edits[0].modified.split('\n')[0]?.slice(0, 70)}…
+          </span>
+          {item.edits.length > 1 && (
+            <div style={{ marginTop: 2, color: 'var(--ink-4)' }}>
+              + {item.edits.length - 1}개 추가 edit
+            </div>
+          )}
         </div>
       )}
       {kind === 'reject' && (
