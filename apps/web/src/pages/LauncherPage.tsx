@@ -8,6 +8,7 @@ import { useProjects } from '../state/ProjectContext';
 import { api } from '../lib/api';
 import { PERSONAS, PERSONA_KEYS } from '../data/personas';
 import { useRunStream } from '../state/useRunStream';
+import { useActiveRun } from '../state/useActiveRun';
 
 const MODELS: ModelTier[] = ['haiku', 'sonnet', 'opus'];
 
@@ -22,6 +23,18 @@ export function LauncherPage() {
   const { current } = useProjects();
   const [params, setParams] = useSearchParams();
   const runId = params.get('run');
+  const activeRun = useActiveRun();
+
+  // If we land on /launch without a ?run= but a run is active, jump to it.
+  // Same hook fires when a different run becomes active mid-session.
+  useEffect(() => {
+    if (runId) return;
+    if (activeRun && activeRun !== runId) {
+      const next = new URLSearchParams(params);
+      next.set('run', activeRun);
+      setParams(next, { replace: true });
+    }
+  }, [runId, activeRun]);
 
   if (!current) {
     return (
@@ -55,11 +68,22 @@ export function LauncherPage() {
         next.set('run', id);
         setParams(next, { replace: true });
       }}
+      onActiveDetected={(id) => {
+        const next = new URLSearchParams(params);
+        next.set('run', id);
+        setParams(next, { replace: true });
+      }}
     />
   );
 }
 
-function LauncherForm({ onStarted }: { onStarted: (runId: string) => void }) {
+function LauncherForm({
+  onStarted,
+  onActiveDetected,
+}: {
+  onStarted: (runId: string) => void;
+  onActiveDetected: (runId: string) => void;
+}) {
   const { current } = useProjects();
   const [persona, setPersona] = useState<Persona>('ieee');
   const [model, setModel] = useState<ModelTier>('sonnet');
@@ -111,7 +135,16 @@ function LauncherForm({ onStarted }: { onStarted: (runId: string) => void }) {
       const res = await api.startRun(req);
       onStarted(res.run_id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      // Fastify returns the json body in the error message; pull active id out
+      // so we can jump the user to the running view instead of leaving them
+      // stuck on the form.
+      const m = msg.match(/"active"\s*:\s*"([^"]+)"/);
+      if (m?.[1]) {
+        onActiveDetected(m[1]);
+        return;
+      }
+      setError(msg);
     } finally {
       setSubmitting(false);
     }

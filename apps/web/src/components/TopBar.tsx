@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useProjects } from '../state/ProjectContext';
+import { useActiveRun } from '../state/useActiveRun';
 
 const NAV = [
   { to: '/', label: 'Dashboard', end: true },
@@ -14,6 +15,8 @@ export function TopBar() {
   const { projects, current, selectProject } = useProjects();
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
   const location = useLocation();
+  const navigate = useNavigate();
+  const activeRun = useActiveRun();
 
   useEffect(() => {
     let alive = true;
@@ -97,6 +100,38 @@ export function TopBar() {
       </nav>
 
       <div style={{ flex: 1 }} />
+
+      {activeRun && (
+        <button
+          onClick={() => navigate(`/launch?run=${encodeURIComponent(activeRun)}`)}
+          title={`진행 중인 라운드 — ${activeRun}`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '4px 10px',
+            background: 'var(--accent-bg)',
+            border: '1px solid var(--accent)',
+            borderRadius: 5,
+            fontFamily: 'var(--mono)',
+            fontSize: 11,
+            fontWeight: 600,
+            color: 'var(--accent)',
+            cursor: 'pointer',
+          }}
+        >
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 3,
+              background: 'var(--accent)',
+              animation: 'pulse 1.4s infinite',
+            }}
+          />
+          run · in progress
+        </button>
+      )}
 
       <span
         title={`API ${healthOk === null ? '확인중' : healthOk ? '정상' : '연결 실패'}`}
