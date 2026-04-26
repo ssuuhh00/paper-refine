@@ -3,6 +3,7 @@ import type {
   ApplyResponse,
   Decision,
   DecisionsPatch,
+  ErrorNote,
   PipelineEvent,
   Project,
   ProjectInput,
@@ -77,4 +78,7 @@ export const api = {
     http<{ run: Run; events: PipelineEvent[] }>(`/runs/${runId}`),
 
   listRuns: () => http<{ active: string | null; runs: Run[] }>('/runs'),
+
+  listErrorNotes: (projectId: string) =>
+    http<ErrorNote[]>(`/error-notes?project_id=${encodeURIComponent(projectId)}`),
 };

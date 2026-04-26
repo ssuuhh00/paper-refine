@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import { errorNotesRoutes } from './routes/error-notes.js';
 import { projectsRoutes } from './routes/projects.js';
 import { roundsRoutes } from './routes/rounds.js';
 import { runsRoutes } from './routes/runs.js';
@@ -17,6 +18,7 @@ async function main() {
   await app.register(projectsRoutes, { prefix: '/api' });
   await app.register(roundsRoutes, { prefix: '/api' });
   await app.register(runsRoutes, { prefix: '/api' });
+  await app.register(errorNotesRoutes, { prefix: '/api' });
 
   await app.listen({ port: PORT, host: HOST });
 }

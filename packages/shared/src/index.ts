@@ -125,11 +125,17 @@ export type RoundSummary = {
 };
 
 export type ErrorNote = {
+  /** Round directory id (`<ts>_round_NNN`). */
   round: string;
+  /** Item key — same form as `RoundItem.key` (e.g. `R3#2`) so links can deep-link. */
+  key: string;
+  /** Display label (R3 / R3-2 etc.) */
   r: string;
   section: string;
-  persona: Persona;
+  /** Null for legacy rounds without meta.json. */
+  persona: Persona | null;
   source: 'discriminator' | 'user';
+  /** ISO date (YYYY-MM-DD). */
   date: string;
   reason: string;
   title: string;

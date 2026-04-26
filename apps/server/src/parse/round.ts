@@ -24,7 +24,7 @@ const CITE_RE = /\*\*인용\*\*\s*:\s*([\s\S]*?)(?=\n[-*]\s*\*\*|\n## |$)/;
 const ISSUE_RE = /\*\*지적\*\*\s*:\s*([\s\S]*?)(?=\n[-*]\s*\*\*|\n## |\n---|$)/;
 const CODE_LATEX_RE = /```latex\n([\s\S]*?)```/g;
 const RATIONALE_RE = /###\s*근거\s*\n([\s\S]*?)(?=\n###|\n## |\n---|$)/;
-const TITLE_TAIL_RE = /^[:\-—\s]*([^—]*?)(?:\s*—\s*\d{2}_\w+\.tex)?\s*$/;
+const SECTION_FILE_BARE = /^\d{2}_\w+\.tex$/;
 
 export type RoundMetaFile = {
   persona?: Persona;
@@ -115,9 +115,18 @@ function pickMapping(
 }
 
 function cleanTitle(headerTail: string): string {
-  // strips leading ":" / "—" and the trailing "— NN_name.tex"
-  const m = headerTail.match(TITLE_TAIL_RE);
-  return (m?.[1] ?? headerTail).trim();
+  let t = headerTail.trim();
+  // strip leading colon/dash/em-dash decorations
+  t = t.replace(/^[:\-—\s]+/, '');
+  // strip the verdict-style "선택 → **A**" tail, keeping any preceding label
+  t = t.replace(/\s*[:：]?\s*선택\s*→.*$/, '');
+  // strip trailing " — section.tex" pointer
+  t = t.replace(/\s*—\s*\d{2}_\w+\.tex\s*$/, '');
+  t = t.trim();
+  // a header tail that is *only* a section file (e.g. "## R3 — 04_evaluation.tex"
+  // in changes.md) carries no title — the title lives in the review header.
+  if (SECTION_FILE_BARE.test(t)) return '';
+  return t;
 }
 
 function pickFirst(re: RegExp, text: string): string {
