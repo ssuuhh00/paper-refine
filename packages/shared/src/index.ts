@@ -73,13 +73,33 @@ export type Round = {
   decisions: Record<string, Decision>;
 };
 
-export type RoundSummary = Pick<
-  Round,
-  'id' | 'ts' | 'project_id' | 'section' | 'persona' | 'model' | 'status'
-> & {
+export type RoundMeta = {
+  id: string;
+  ts: string;
+  display_ts: string;
+  project_id: string;
+  section: string;
+  persona: Persona;
+  model: ModelTier;
+};
+
+export type RoundSummary = {
+  id: string;
+  ts: string;
+  display_ts: string;
+  project_id: string;
+  section: string;
+  /** Null for legacy rounds without meta.json. */
+  persona: Persona | null;
+  /** Null for legacy rounds without meta.json. */
+  model: ModelTier | null;
+  status: 'in-progress' | 'completed' | 'failed';
   itemCount: number;
   decided: number;
   applyCount: number;
+  skipCount: number;
+  rejectCount: number;
+  pendingCount: number;
   recommendedModified: number;
 };
 
