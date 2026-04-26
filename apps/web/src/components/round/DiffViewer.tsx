@@ -108,16 +108,21 @@ function wordDiff(aLine: string, bLine: string): { a: Tok[]; b: Tok[] } {
 
 function renderTokens(tokens: Tok[]) {
   return tokens.map((t, i) => {
-    if (t.t === 'eq') return <span key={i}>{t.s}</span>;
+    if (t.t === 'eq')
+      return (
+        <span key={i} style={{ opacity: 0.5 }}>
+          {t.s}
+        </span>
+      );
     if (t.t === 'del')
       return (
         <span
           key={i}
           style={{
-            background: 'var(--del-bg)',
-            color: 'var(--del)',
+            background: 'var(--del-strong)',
             borderRadius: 2,
-            padding: '0 1px',
+            padding: '0 2px',
+            fontWeight: 700,
           }}
         >
           {t.s}
@@ -127,10 +132,10 @@ function renderTokens(tokens: Tok[]) {
       <span
         key={i}
         style={{
-          background: 'var(--add-bg)',
-          color: 'var(--add)',
+          background: 'var(--add-strong)',
           borderRadius: 2,
-          padding: '0 1px',
+          padding: '0 2px',
+          fontWeight: 700,
         }}
       >
         {t.s}

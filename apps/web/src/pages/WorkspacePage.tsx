@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import type { DecisionState, RoundItem, Side } from '@paper-refine/shared';
+import type { DecisionState, RoundItem } from '@paper-refine/shared';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { PersonaBadge } from '../components/round/PersonaBadge';
@@ -8,7 +8,6 @@ import { SectionTag } from '../components/round/SectionTag';
 import { DecisionStamp } from '../components/round/DecisionStamp';
 import { Stepper, STEPS, type StepKey } from '../components/round/Stepper';
 import { DiffViewer, type DiffMode } from '../components/round/DiffViewer';
-import { BlindCard } from '../components/round/BlindCard';
 import { DecisionBar } from '../components/round/DecisionBar';
 import { ApplyModal } from '../components/round/ApplyModal';
 import { useProjects } from '../state/ProjectContext';
@@ -28,7 +27,6 @@ export function WorkspacePage() {
   const [step, setStep] = useState<StepKey>('verdict');
   const [diffMode, setDiffMode] = useState<DiffMode>('split');
   const [filter, setFilter] = useState<Filter>('all');
-  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [showApply, setShowApply] = useState(false);
 
   // initialize active item: first pending if any, else first
@@ -439,59 +437,7 @@ export function WorkspacePage() {
               )}
             </Section>
 
-            <Section step="3" label="Blind Test" ko="A/B 블라인드 비교 (Discriminator 입력)">
-              <div
-                style={{
-                  fontSize: 12,
-                  color: 'var(--ink-3)',
-                  marginBottom: 10,
-                  lineHeight: 1.5,
-                }}
-              >
-                Generator가 만든 원문/수정안을 무작위 셔플하여 Discriminator에게 제시한 입력입니다.
-                후보 위·아래의 회색 텍스트는 .tex 원본의 surrounding context — 흐름 안에서 판단하세요.
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                {(['A', 'B'] as Side[]).map((side) => {
-                  const text = item.blind[side] === 'modified' ? item.modified : item.original;
-                  return (
-                    <BlindCard
-                      key={side}
-                      side={side}
-                      text={text}
-                      kind={item.blind[side]}
-                      revealed={!!revealed[item.key]}
-                      picked={item.verdict.pick === side}
-                      context={item.context}
-                    />
-                  );
-                })}
-              </div>
-              <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <button
-                  onClick={() =>
-                    setRevealed((p) => ({ ...p, [item.key]: !p[item.key] }))
-                  }
-                  style={{
-                    padding: '5px 12px',
-                    border: '1px solid var(--border)',
-                    background: revealed[item.key] ? 'var(--surface-2)' : 'transparent',
-                    color: 'var(--ink-2)',
-                    borderRadius: 5,
-                    fontSize: 11,
-                    fontFamily: 'var(--mono)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {revealed[item.key] ? '↓ Hide mapping' : '→ Reveal mapping'}
-                </button>
-                <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-4)' }}>
-                  {item.key} → A={item.blind.A}, B={item.blind.B}
-                </span>
-              </div>
-            </Section>
-
-            <Section step="4" label="Verdict" ko="Discriminator 판정 + 추천 결과">
+            <Section step="3" label="Verdict" ko="Discriminator 판정 + 추천 결과">
               <div style={{ display: 'flex', gap: 14, alignItems: 'stretch' }}>
                 <Card
                   style={{

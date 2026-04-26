@@ -26,8 +26,10 @@
 
   --add: #1c5e2e;
   --add-bg: #e6f0e1;
+  --add-strong: #a8d49a;
   --del: #9c3e1f;
   --del-bg: #f6e3d6;
+  --del-strong: #f0b48a;
 
   --sans: 'Pretendard', 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
@@ -58,8 +60,10 @@
 
   --add: #a3d8ad;
   --add-bg: #1d2a1d;
+  --add-strong: #2f5a35;
   --del: #e1a385;
   --del-bg: #2c2017;
+  --del-strong: #6b3a20;
 }
 
 html,

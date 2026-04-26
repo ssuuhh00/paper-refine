@@ -1,11 +1,10 @@
 import React from 'react';
 
-export type StepKey = 'review' | 'changes' | 'blind' | 'verdict';
+export type StepKey = 'review' | 'changes' | 'verdict';
 
 export const STEPS: { k: StepKey; label: string; ko: string }[] = [
   { k: 'review', label: 'Review', ko: '리뷰' },
   { k: 'changes', label: 'Changes', ko: '수정안' },
-  { k: 'blind', label: 'Blind', ko: '블라인드' },
   { k: 'verdict', label: 'Verdict', ko: '판정' },
 ];
 
