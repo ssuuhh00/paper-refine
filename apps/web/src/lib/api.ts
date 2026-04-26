@@ -1,4 +1,6 @@
 import type {
+  ApplyRequest,
+  ApplyResponse,
   Decision,
   DecisionsPatch,
   PipelineEvent,
@@ -52,6 +54,12 @@ export const api = {
     http<{ decisions: Record<string, Decision> }>(
       `/rounds/${id}/decisions?project_id=${encodeURIComponent(projectId)}`,
       { method: 'PATCH', body: JSON.stringify(patch) },
+    ),
+
+  applyRound: (projectId: string, roundId: string, body: ApplyRequest) =>
+    http<ApplyResponse>(
+      `/rounds/${roundId}/apply?project_id=${encodeURIComponent(projectId)}`,
+      { method: 'POST', body: JSON.stringify(body) },
     ),
 
   listSections: (projectId: string) =>

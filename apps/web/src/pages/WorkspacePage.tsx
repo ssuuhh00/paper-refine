@@ -10,6 +10,7 @@ import { Stepper, STEPS, type StepKey } from '../components/round/Stepper';
 import { DiffViewer, type DiffMode } from '../components/round/DiffViewer';
 import { BlindCard } from '../components/round/BlindCard';
 import { DecisionBar } from '../components/round/DecisionBar';
+import { ApplyModal } from '../components/round/ApplyModal';
 import { useProjects } from '../state/ProjectContext';
 import { useRound } from '../state/useRound';
 
@@ -18,7 +19,10 @@ type Filter = 'all' | 'pending' | 'reject';
 export function WorkspacePage() {
   const { roundId } = useParams<{ roundId: string }>();
   const { current } = useProjects();
-  const { round, loading, error, setDecision } = useRound(current?.id ?? null, roundId ?? null);
+  const { round, loading, error, setDecision, reload } = useRound(
+    current?.id ?? null,
+    roundId ?? null,
+  );
 
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [step, setStep] = useState<StepKey>('verdict');
@@ -229,7 +233,9 @@ export function WorkspacePage() {
           <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
             {filteredItems.map((it) => {
               const isActive = it.key === activeKey;
-              const d = (round.decisions[it.key]?.state ?? 'pending') as DecisionState;
+              const dec = round.decisions[it.key];
+              const d = (dec?.state ?? 'pending') as DecisionState;
+              const isApplied = !!dec?.applied_at;
               const recModified = it.blind[it.verdict.pick] === 'modified';
               return (
                 <button
@@ -267,7 +273,26 @@ export function WorkspacePage() {
                     >
                       {it.key}
                     </span>
-                    <DecisionStamp state={d} size="sm" />
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {isApplied && (
+                        <span
+                          title={`applied at ${dec?.applied_at}`}
+                          style={{
+                            fontFamily: 'var(--mono)',
+                            fontSize: 9,
+                            fontWeight: 700,
+                            letterSpacing: 0.5,
+                            color: 'var(--accent)',
+                            padding: '1px 5px',
+                            background: 'var(--accent-bg)',
+                            borderRadius: 3,
+                          }}
+                        >
+                          ✓ APPLIED
+                        </span>
+                      )}
+                      <DecisionStamp state={d} size="sm" />
+                    </span>
                   </div>
                   <div
                     style={{
@@ -322,6 +347,23 @@ export function WorkspacePage() {
                 )}
                 <span>·</span>
                 <SectionTag id={item.section} />
+                {decision.applied_at && (
+                  <span
+                    title={`applied at ${decision.applied_at}`}
+                    style={{
+                      fontFamily: 'var(--mono)',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: 0.5,
+                      color: 'var(--accent)',
+                      padding: '1px 6px',
+                      background: 'var(--accent-bg)',
+                      borderRadius: 3,
+                    }}
+                  >
+                    ✓ APPLIED to .tex
+                  </span>
+                )}
               </div>
               <h1
                 style={{
@@ -582,7 +624,18 @@ export function WorkspacePage() {
         </main>
       </div>
 
-      {showApply && <ApplyPreviewModal round={round} onClose={() => setShowApply(false)} />}
+      {showApply && current && roundId && (
+        <ApplyModal
+          projectId={current.id}
+          roundId={roundId}
+          items={round.items}
+          decisions={round.decisions}
+          onClose={() => setShowApply(false)}
+          onApplied={() => {
+            void reload();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -679,193 +732,6 @@ function ReviewView({ item }: { item: RoundItem }) {
           (review.md에서 이 항목 정보를 찾지 못했습니다.)
         </div>
       )}
-    </div>
-  );
-}
-
-function ApplyPreviewModal({
-  round,
-  onClose,
-}: {
-  round: { items: RoundItem[]; decisions: Record<string, { state: DecisionState; reason?: string }> };
-  onClose: () => void;
-}) {
-  const applies = round.items.filter((i) => round.decisions[i.key]?.state === 'apply');
-  const rejects = round.items.filter((i) => round.decisions[i.key]?.state === 'reject');
-
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.4)',
-        backdropFilter: 'blur(4px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'var(--bg)',
-          borderRadius: 10,
-          width: 'min(720px, 92vw)',
-          maxHeight: '86vh',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-          border: '1px solid var(--border)',
-        }}
-      >
-        <div
-          style={{
-            padding: '16px 20px',
-            borderBottom: '1px solid var(--border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 600 }}>Apply preview</div>
-            <div
-              style={{
-                fontFamily: 'var(--mono)',
-                fontSize: 11,
-                color: 'var(--ink-3)',
-                marginTop: 2,
-              }}
-            >
-              {applies.length}개 적용 · {rejects.length}개 오답노트로
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--ink-3)',
-              fontSize: 18,
-              cursor: 'pointer',
-              width: 28,
-              height: 28,
-            }}
-          >
-            ×
-          </button>
-        </div>
-        <div style={{ padding: '14px 20px', overflowY: 'auto', flex: 1 }}>
-          <Group label={`적용 대상 (${applies.length})`}>
-            {applies.length === 0 && <Empty />}
-            {applies.map((it) => (
-              <ApplyRow key={it.key} item={it} kind="apply" />
-            ))}
-          </Group>
-          {rejects.length > 0 && (
-            <Group label={`오답노트로 (${rejects.length})`}>
-              {rejects.map((it) => (
-                <ApplyRow key={it.key} item={it} kind="reject" />
-              ))}
-            </Group>
-          )}
-        </div>
-        <div
-          style={{
-            padding: '12px 20px',
-            borderTop: '1px solid var(--border)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <span
-            style={{
-              fontFamily: 'var(--mono)',
-              fontSize: 10.5,
-              color: 'var(--warn)',
-            }}
-          >
-            ⚠ apply 동작은 다음 단계에서 활성화됩니다.
-          </span>
-          <Button variant="ghost" onClick={onClose}>
-            닫기
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Group({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div
-        style={{
-          fontFamily: 'var(--mono)',
-          fontSize: 10.5,
-          color: 'var(--ink-3)',
-          letterSpacing: 0.5,
-          textTransform: 'uppercase',
-          marginBottom: 8,
-        }}
-      >
-        {label}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function Empty() {
-  return (
-    <div style={{ padding: 14, color: 'var(--ink-3)', fontSize: 12 }}>없음</div>
-  );
-}
-
-function ApplyRow({
-  item,
-  kind,
-}: {
-  item: RoundItem;
-  kind: 'apply' | 'reject';
-}) {
-  const color = kind === 'apply' ? 'var(--ok)' : 'var(--warn)';
-  return (
-    <div
-      style={{
-        marginBottom: 8,
-        padding: '10px 12px',
-        border: '1px solid var(--border)',
-        borderLeft: `3px solid ${color}`,
-        borderRadius: 4,
-        background: 'var(--surface)',
-      }}
-    >
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
-        <span style={{ fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 700, color: 'var(--accent)' }}>
-          {item.key}
-        </span>
-        <span style={{ fontSize: 12, color: 'var(--ink)' }}>{item.title || '(제목 없음)'}</span>
-        <span
-          style={{
-            marginLeft: 'auto',
-            fontFamily: 'var(--mono)',
-            fontSize: 10,
-            color: 'var(--ink-3)',
-          }}
-        >
-          {item.section}
-        </span>
-      </div>
-      <div style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>
-        <span style={{ color: 'var(--del)' }}>− {item.original.split('\n')[0]?.slice(0, 60)}…</span>
-        <br />
-        <span style={{ color: 'var(--add)' }}>+ {item.modified.split('\n')[0]?.slice(0, 60)}…</span>
-      </div>
     </div>
   );
 }

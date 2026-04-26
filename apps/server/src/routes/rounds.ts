@@ -1,7 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify';
-import type { DecisionsPatch } from '@paper-refine/shared';
+import type { ApplyRequest, ApplyResponse, DecisionsPatch } from '@paper-refine/shared';
 import { projectStore } from '../store/projects.js';
 import { listRoundsInDir, loadFullRound, patchDecisions } from '../parse/round.js';
+import { applyRound } from '../pipeline/apply.js';
 
 export const roundsRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Querystring: { project_id?: string } }>('/rounds', async (req, reply) => {
@@ -44,8 +45,23 @@ export const roundsRoutes: FastifyPluginAsync = async (app) => {
   app.post<{
     Params: { id: string };
     Querystring: { project_id?: string };
-  }>('/rounds/:id/apply', async (_req, reply) => {
-    // Placeholder — actual .tex apply + error_notes append lands in a follow-up.
-    return reply.status(501).send({ error: 'apply pipeline not implemented yet' });
+    Body: ApplyRequest;
+  }>('/rounds/:id/apply', async (req, reply) => {
+    const projectId = req.query.project_id;
+    if (!projectId) return reply.status(400).send({ error: 'project_id required' });
+    const project = await projectStore.get(projectId);
+    if (!project) return reply.status(404).send({ error: 'project not found' });
+    const dryRun = req.body?.dry_run === true;
+    try {
+      const outcome = await applyRound(project, req.params.id, { dryRun });
+      const res: ApplyResponse = { ...outcome, dry_run: dryRun };
+      return res;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === 'round not found') {
+        return reply.status(404).send({ error: msg });
+      }
+      return reply.status(500).send({ error: msg });
+    }
   });
 };

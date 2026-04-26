@@ -58,6 +58,23 @@ export type Decision = {
   reason?: string;
   memo?: string;
   decided_at?: string;
+  /** Set when the apply action wrote this item to the .tex (or appended to error_notes). */
+  applied_at?: string;
+};
+
+export type ApplyOutcome = {
+  applied: { key: string; section: string }[];
+  rejected: { key: string; section: string; reason: string }[];
+  errors: { key: string; section: string; error: string }[];
+  skipped: { key: string; reason: string }[];
+};
+
+export type ApplyRequest = {
+  dry_run?: boolean;
+};
+
+export type ApplyResponse = ApplyOutcome & {
+  dry_run: boolean;
 };
 
 export type Round = {
