@@ -25,3 +25,6 @@ npm-debug.log*
 *.pid
 .cache/
 .claude/
+
+# round artifacts (per-project rounds + error_notes; see apps/server/src/util/paths.ts)
+data/

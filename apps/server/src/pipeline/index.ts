@@ -84,7 +84,7 @@ async function runOneRound(
 ): Promise<string> {
   const { project, persona, sections, model } = plan;
   const roundId = `${compactTimestamp()}_round_${pad(roundIdx, 3)}`;
-  const roundDir = path.join(project.output_dir, roundId);
+  const roundDir = path.join(project.output_dir, 'rounds', roundId);
   await fs.mkdir(roundDir, { recursive: true });
 
   const tag = `[round ${roundIdx}/${plan.rounds}]`;

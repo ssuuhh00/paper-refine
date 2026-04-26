@@ -15,7 +15,15 @@ export type Project = {
   updated_at: string;
 };
 
-export type ProjectInput = Omit<Project, 'id' | 'created_at' | 'updated_at'>;
+export type ProjectInput = Omit<
+  Project,
+  'id' | 'created_at' | 'updated_at' | 'output_dir' | 'error_notes_path'
+> & {
+  /** Optional override; defaults to <repo>/data/projects/<id>. */
+  output_dir?: string;
+  /** Optional override; defaults to <output_dir>/error_notes.md. */
+  error_notes_path?: string;
+};
 
 /**
  * Surrounding text from the .tex section file, captured at pipeline time

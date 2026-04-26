@@ -238,15 +238,16 @@ export async function listRoundsInDir(
   outputDir: string,
   projectId: string,
 ): Promise<RoundSummary[]> {
+  const roundsDir = path.join(outputDir, 'rounds');
   let entries: string[];
   try {
-    entries = await fs.readdir(outputDir);
+    entries = await fs.readdir(roundsDir);
   } catch {
     return [];
   }
   const summaries: RoundSummary[] = [];
   for (const name of entries) {
-    const dir = path.join(outputDir, name);
+    const dir = path.join(roundsDir, name);
     let isDir = false;
     try {
       isDir = (await fs.stat(dir)).isDirectory();
@@ -266,7 +267,7 @@ export async function loadFullRound(
   project: Project,
   roundId: string,
 ): Promise<Round | null> {
-  const dir = path.join(project.output_dir, roundId);
+  const dir = path.join(project.output_dir, 'rounds', roundId);
   const parsed = parseDirName(roundId);
   if (!parsed) return null;
   let stat;
@@ -412,7 +413,7 @@ export async function patchDecisions(
   roundId: string,
   patch: Record<string, Decision>,
 ): Promise<Record<string, Decision>> {
-  const dir = path.join(project.output_dir, roundId);
+  const dir = path.join(project.output_dir, 'rounds', roundId);
   const file = path.join(dir, 'decisions.json');
   let current: Record<string, Decision> = {};
   try {

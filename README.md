@@ -65,16 +65,16 @@ TopBar에 펄스 인디케이터로 표시되고, `/launch` 진입 시 자동으
 ## 데이터 위치
 
 - **프로젝트 메타** — `${XDG_CONFIG_HOME:-~/.config}/paper-refine/projects.json`
-- **라운드 산출물** — `<latex_root>/refine_output/<ts>_round_NNN/`
+- **라운드 산출물** — `paper-refine/data/projects/<project_id>/rounds/<ts>_round_NNN/` (gitignored)
   - `meta.json` — persona/model/sections (대시보드용)
   - `1_review.md` — 리뷰어 지적 (R 항목 헤더)
   - `2_changes.md` + `2_changes.json` — 원문/수정 쌍 (markdown은 사람용, json은 컨텍스트 포함 구조화)
   - `3_blind_test.md` + `3_mapping.txt` — A/B 셔플 + 역매핑(비공개)
   - `4_verdict.md` — Discriminator 판정
   - `decisions.json` — 사용자 결정 (`{state, reason?, memo?, decided_at, applied_at?}`)
-- **오답노트** — `<latex_root>/refine_output/error_notes.md` (다음 라운드 Generator 입력)
+- **오답노트** — `paper-refine/data/projects/<project_id>/error_notes.md` (다음 라운드 Generator 입력)
 
-라운드 산출물이 논문 리포 옆에 떨어지므로 git에 함께 커밋하면 결정 이력이 보존된다.
+paper 리포에는 사용자가 Apply한 `.tex` 변경분만 들어간다. 라운드 산출물·결정 이력은 paper-refine 안에만 있고 git 추적 안 됨 — 백업하려면 `data/` 폴더를 따로 압축/복사.
 
 ---
 

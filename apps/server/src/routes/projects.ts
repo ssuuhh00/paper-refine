@@ -7,25 +7,19 @@ import type {
   ProjectValidateResponse,
 } from '@paper-refine/shared';
 import { projectStore } from '../store/projects.js';
-import { defaultErrorNotes, defaultOutputDir, resolveAbsolute } from '../util/paths.js';
+import { resolveAbsolute } from '../util/paths.js';
 
 const DEFAULT_GLOB = 'sections/*.tex';
 
 function withDefaults(input: ProjectInput): ProjectInput {
-  const latex_root = resolveAbsolute(input.latex_root);
-  const sections_glob = input.sections_glob || DEFAULT_GLOB;
-  const output_dir = input.output_dir
-    ? resolveAbsolute(input.output_dir)
-    : defaultOutputDir(latex_root);
-  const error_notes_path = input.error_notes_path
-    ? resolveAbsolute(input.error_notes_path)
-    : defaultErrorNotes(output_dir);
   return {
     name: input.name.trim(),
-    latex_root,
-    sections_glob,
-    output_dir,
-    error_notes_path,
+    latex_root: resolveAbsolute(input.latex_root),
+    sections_glob: input.sections_glob || DEFAULT_GLOB,
+    ...(input.output_dir ? { output_dir: resolveAbsolute(input.output_dir) } : {}),
+    ...(input.error_notes_path
+      ? { error_notes_path: resolveAbsolute(input.error_notes_path) }
+      : {}),
   };
 }
 
