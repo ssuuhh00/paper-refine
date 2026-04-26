@@ -94,6 +94,19 @@ export type ErrorNote = {
   title: string;
 };
 
+export type ProjectValidateRequest = {
+  latex_root: string;
+  sections_glob?: string;
+};
+
+export type ProjectValidateResponse = {
+  latex_root: string;
+  exists: boolean;
+  is_directory: boolean;
+  sections_found: number;
+  sample_sections: string[];
+};
+
 export type RunRequest = {
   project_id: string;
   persona: Persona;

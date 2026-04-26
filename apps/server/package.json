@@ -12,6 +12,7 @@
   "dependencies": {
     "@fastify/cors": "^9.0.1",
     "@paper-refine/shared": "*",
+    "fast-glob": "^3.3.2",
     "fastify": "^4.28.1"
   },
   "devDependencies": {

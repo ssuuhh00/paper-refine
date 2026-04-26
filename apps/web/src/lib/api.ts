@@ -1,4 +1,11 @@
-import type { Project, ProjectInput, RoundSummary, Round } from '@paper-refine/shared';
+import type {
+  Project,
+  ProjectInput,
+  ProjectValidateRequest,
+  ProjectValidateResponse,
+  Round,
+  RoundSummary,
+} from '@paper-refine/shared';
 
 const base = '/api';
 
@@ -26,6 +33,11 @@ export const api = {
   updateProject: (id: string, patch: Partial<ProjectInput>) =>
     http<Project>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteProject: (id: string) => http<{ ok: true }>(`/projects/${id}`, { method: 'DELETE' }),
+  validateProject: (input: ProjectValidateRequest) =>
+    http<ProjectValidateResponse>('/projects/validate', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   listRounds: (projectId: string) =>
     http<RoundSummary[]>(`/rounds?project_id=${encodeURIComponent(projectId)}`),
