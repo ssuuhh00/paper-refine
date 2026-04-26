@@ -65,10 +65,17 @@ export function WorkspacePage() {
     if (next) setActiveKey(next.key);
   };
 
+  const goToStep = (k: StepKey) => {
+    setStep(k);
+    document
+      .getElementById(`step-${k}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   const moveStep = (delta: number) => {
     const idx = STEPS.findIndex((s) => s.k === step);
     const next = STEPS[Math.max(0, Math.min(STEPS.length - 1, idx + delta))];
-    if (next) setStep(next.k);
+    if (next) goToStep(next.k);
   };
 
   // keyboard
@@ -172,7 +179,7 @@ export function WorkspacePage() {
             {counts.apply} · 보류 {counts.skip} · 거부 {counts.reject} · 미결정 {counts.pending}
           </div>
         </div>
-        <Stepper active={step} onPick={setStep} compact />
+        <Stepper active={step} onPick={goToStep} compact />
         <div style={{ flex: 1 }} />
         <PersonaBadge id={round.persona} />
         <SectionTag id={round.section} full />
@@ -376,11 +383,11 @@ export function WorkspacePage() {
               </h1>
             </div>
 
-            <Section step="1" label="Review" ko="리뷰어 지적">
+            <Section step="1" stepKey="review" label="Review" ko="리뷰어 지적">
               <ReviewView item={item} />
             </Section>
 
-            <Section step="2" label="Changes" ko="원문 ↔ 수정안">
+            <Section step="2" stepKey="changes" label="Changes" ko="원문 ↔ 수정안">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 {(['split', 'unified'] as const).map((m) => (
                   <button
@@ -437,7 +444,7 @@ export function WorkspacePage() {
               )}
             </Section>
 
-            <Section step="3" label="Verdict" ko="Discriminator 판정 + 추천 결과">
+            <Section step="3" stepKey="verdict" label="Blind + Verdict" ko="블라인드 셔플 후 Discriminator 판정">
               <div style={{ display: 'flex', gap: 14, alignItems: 'stretch' }}>
                 <Card
                   style={{
@@ -446,7 +453,7 @@ export function WorkspacePage() {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    minWidth: 120,
+                    minWidth: 180,
                     background: 'var(--ok-bg)',
                     borderColor: 'var(--ok)',
                   }}
@@ -457,7 +464,7 @@ export function WorkspacePage() {
                       fontSize: 10,
                       color: 'var(--ok)',
                       letterSpacing: 0.6,
-                      marginBottom: 4,
+                      marginBottom: 6,
                     }}
                   >
                     PICK
@@ -465,23 +472,26 @@ export function WorkspacePage() {
                   <div
                     style={{
                       fontFamily: 'var(--mono)',
-                      fontSize: 42,
+                      fontSize: 26,
                       fontWeight: 700,
                       color: 'var(--ok)',
-                      lineHeight: 1,
+                      lineHeight: 1.1,
+                      letterSpacing: 0.5,
+                      textTransform: 'uppercase',
                     }}
                   >
-                    {item.verdict.pick}
+                    {item.blind[item.verdict.pick]}
                   </div>
                   <div
                     style={{
                       fontFamily: 'var(--mono)',
-                      fontSize: 10.5,
+                      fontSize: 10,
                       color: 'var(--ok)',
+                      opacity: 0.7,
                       marginTop: 6,
                     }}
                   >
-                    {item.blind[item.verdict.pick]}
+                    blind {item.verdict.pick} ({item.blind[item.verdict.pick]})
                   </div>
                 </Card>
                 <Card style={{ flex: 1, padding: 14 }}>
@@ -588,17 +598,19 @@ export function WorkspacePage() {
 
 function Section({
   step,
+  stepKey,
   label,
   ko,
   children,
 }: {
   step: string;
+  stepKey: StepKey;
   label: string;
   ko: string;
   children: React.ReactNode;
 }) {
   return (
-    <section style={{ marginBottom: 30 }}>
+    <section id={`step-${stepKey}`} style={{ marginBottom: 30, scrollMarginTop: 16 }}>
       <header
         style={{
           display: 'flex',

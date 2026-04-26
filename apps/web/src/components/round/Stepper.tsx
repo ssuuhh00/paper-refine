@@ -5,7 +5,7 @@ export type StepKey = 'review' | 'changes' | 'verdict';
 export const STEPS: { k: StepKey; label: string; ko: string }[] = [
   { k: 'review', label: 'Review', ko: '리뷰' },
   { k: 'changes', label: 'Changes', ko: '수정안' },
-  { k: 'verdict', label: 'Verdict', ko: '판정' },
+  { k: 'verdict', label: 'Blind + Verdict', ko: '블라인드 → 판정' },
 ];
 
 type Props = {
