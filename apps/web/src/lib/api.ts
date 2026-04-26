@@ -79,6 +79,12 @@ export const api = {
 
   listRuns: () => http<{ active: string | null; runs: Run[] }>('/runs'),
 
+  cancelRun: (runId: string) =>
+    http<{ ok: true }>(`/runs/${encodeURIComponent(runId)}/cancel`, {
+      method: 'POST',
+      body: '{}',
+    }),
+
   listErrorNotes: (projectId: string) =>
     http<ErrorNote[]>(`/error-notes?project_id=${encodeURIComponent(projectId)}`),
 };

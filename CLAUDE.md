@@ -35,7 +35,7 @@ paper-refine/
 └── HANDOFF.md           이전 세션 인계 문서
 ```
 
-dev 실행: `npm run dev:web` / `npm run dev:server` (web → :5173, server → :3001, /api 프록시)
+dev 실행: `./start.sh` (백엔드+프론트 동시 기동 + 브라우저 자동 오픈) 또는 수동으로 `npm run dev:server` / `npm run dev:web` (:3001 / :5173, /api 프록시)
 
 ---
 

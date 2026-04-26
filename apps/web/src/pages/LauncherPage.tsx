@@ -491,7 +491,22 @@ function RunningView({ runId, onBackToForm }: { runId: string; onBackToForm: () 
     return 'review';
   }, [events]);
   const stageIdx = STAGES.findIndex((s) => s.k === currentStage);
-  const isDone = run?.status === 'completed' || run?.status === 'failed';
+  const isDone =
+    run?.status === 'completed' || run?.status === 'failed' || run?.status === 'canceled';
+  const isRunning = run?.status === 'running' || run?.status === 'queued';
+  const [canceling, setCanceling] = useState(false);
+
+  const cancel = async () => {
+    if (!confirm('진행 중인 라운드를 취소하시겠습니까? 부분 산출물은 디스크에 남습니다.')) return;
+    setCanceling(true);
+    try {
+      await api.cancelRun(runId);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCanceling(false);
+    }
+  };
 
   // per-stage counters
   const counters = useMemo(() => {
@@ -563,6 +578,11 @@ function RunningView({ runId, onBackToForm }: { runId: string; onBackToForm: () 
             )}
           </div>
           <div style={{ flex: 1 }} />
+          {isRunning && (
+            <Button variant="danger" size="sm" onClick={cancel} disabled={canceling}>
+              {canceling ? '취소 중…' : '취소'}
+            </Button>
+          )}
           {isDone && completedRoundIds.length > 0 && (
             <Button
               variant="primary"

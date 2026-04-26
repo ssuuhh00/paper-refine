@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import type { PipelineEvent, Run, RunRequest } from '@paper-refine/shared';
 
-type Entry = {
+export type Entry = {
   run: Run;
   events: PipelineEvent[];
   emitter: EventEmitter;

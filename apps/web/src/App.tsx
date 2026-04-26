@@ -2,19 +2,23 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { TopBar } from './components/TopBar';
 import { ProjectProvider, useProjects } from './state/ProjectContext';
+import { ThemeProvider, useTheme } from './state/ThemeContext';
 
 export function App() {
   return (
-    <ProjectProvider>
-      <Shell />
-    </ProjectProvider>
+    <ThemeProvider>
+      <ProjectProvider>
+        <Shell />
+      </ProjectProvider>
+    </ThemeProvider>
   );
 }
 
 function Shell() {
+  const { theme } = useTheme();
   return (
     <div
-      className="light"
+      className={theme}
       style={{
         minHeight: '100vh',
         background: 'var(--bg)',

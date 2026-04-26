@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useProjects } from '../state/ProjectContext';
 import { useActiveRun } from '../state/useActiveRun';
+import { useTheme } from '../state/ThemeContext';
 
 const NAV = [
   { to: '/', label: 'Dashboard', end: true },
@@ -17,6 +18,7 @@ export function TopBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const activeRun = useActiveRun();
+  const { theme, toggle } = useTheme();
 
   useEffect(() => {
     let alive = true;
@@ -132,6 +134,28 @@ export function TopBar() {
           run · in progress
         </button>
       )}
+
+      <button
+        onClick={toggle}
+        title={`테마: ${theme}`}
+        aria-label="theme toggle"
+        style={{
+          width: 26,
+          height: 26,
+          padding: 0,
+          background: 'transparent',
+          border: '1px solid var(--border)',
+          borderRadius: 5,
+          cursor: 'pointer',
+          color: 'var(--ink-2)',
+          fontSize: 13,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {theme === 'dark' ? '☀' : '☾'}
+      </button>
 
       <span
         title={`API ${healthOk === null ? '확인중' : healthOk ? '정상' : '연결 실패'}`}

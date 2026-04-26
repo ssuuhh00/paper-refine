@@ -12,6 +12,7 @@ import {
   setActive,
   setStatus,
 } from '../runs/store.js';
+import type { Entry } from '../runs/store.js';
 import { checkClaudeAvailable } from '../pipeline/claude.js';
 
 const ALLOWED_PERSONAS = new Set(['ieee', 'outsider', 'writing', 'structure']);
@@ -97,31 +98,65 @@ export const runsRoutes: FastifyPluginAsync = async (app) => {
     };
 
     setStatus(entry.run.id, 'running');
-    void (async () => {
-      try {
-        const roundIds = await runPipeline(
-          plan,
-          (ev) => pushEvent(entry.run.id, ev),
-          entry.abort.signal,
-        );
-        finishRun(entry.run.id, { status: 'completed', round_ids: roundIds });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        pushEvent(entry.run.id, {
-          stage: 'done',
-          type: 'error',
-          msg,
-          ts: Date.now(),
-        });
-        finishRun(entry.run.id, { status: 'failed', error: msg });
-      } finally {
-        if (activeRunId() === entry.run.id) setActive(null);
-      }
-    })();
+    void runRunInBackground(entry, plan);
 
     return reply.status(202).send({ run_id: entry.run.id });
   });
+
+  app.post<{ Params: { id: string } }>('/runs/:id/cancel', async (req, reply) => {
+    const entry = getEntry(req.params.id);
+    if (!entry) return reply.status(404).send({ error: 'run not found' });
+    if (entry.run.status !== 'running' && entry.run.status !== 'queued') {
+      return reply.status(409).send({ error: `run already ${entry.run.status}` });
+    }
+    entry.abort.abort();
+    pushEvent(entry.run.id, {
+      stage: 'done',
+      type: 'log',
+      level: 'yellow',
+      msg: '취소 요청됨…',
+      ts: Date.now(),
+    });
+    return { ok: true as const };
+  });
 };
+
+async function runRunInBackground(
+  entry: Entry,
+  plan: Parameters<typeof runPipeline>[0],
+): Promise<void> {
+  try {
+    const roundIds = await runPipeline(
+      plan,
+      (ev) => pushEvent(entry.run.id, ev),
+      entry.abort.signal,
+    );
+    finishRun(entry.run.id, { status: 'completed', round_ids: roundIds });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const wasAborted = entry.abort.signal.aborted;
+    if (wasAborted) {
+      pushEvent(entry.run.id, {
+        stage: 'done',
+        type: 'log',
+        level: 'yellow',
+        msg: '✗ 취소됨',
+        ts: Date.now(),
+      });
+      finishRun(entry.run.id, { status: 'canceled', error: msg });
+    } else {
+      pushEvent(entry.run.id, {
+        stage: 'done',
+        type: 'error',
+        msg,
+        ts: Date.now(),
+      });
+      finishRun(entry.run.id, { status: 'failed', error: msg });
+    }
+  } finally {
+    if (activeRunId() === entry.run.id) setActive(null);
+  }
+}
 
 function validateRunRequest(body: RunRequest | undefined): string | null {
   if (!body) return 'body required';
