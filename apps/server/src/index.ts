@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { projectsRoutes } from './routes/projects.js';
 import { roundsRoutes } from './routes/rounds.js';
+import { runsRoutes } from './routes/runs.js';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -15,6 +16,7 @@ async function main() {
 
   await app.register(projectsRoutes, { prefix: '/api' });
   await app.register(roundsRoutes, { prefix: '/api' });
+  await app.register(runsRoutes, { prefix: '/api' });
 
   await app.listen({ port: PORT, host: HOST });
 }

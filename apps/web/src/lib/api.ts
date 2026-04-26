@@ -1,12 +1,15 @@
 import type {
   Decision,
   DecisionsPatch,
+  PipelineEvent,
   Project,
   ProjectInput,
   ProjectValidateRequest,
   ProjectValidateResponse,
   Round,
   RoundSummary,
+  Run,
+  RunRequest,
 } from '@paper-refine/shared';
 
 const base = '/api';
@@ -50,4 +53,20 @@ export const api = {
       `/rounds/${id}/decisions?project_id=${encodeURIComponent(projectId)}`,
       { method: 'PATCH', body: JSON.stringify(patch) },
     ),
+
+  listSections: (projectId: string) =>
+    http<{
+      latex_root: string;
+      sections_glob: string;
+      sections: { rel: string; name: string }[];
+      total: number;
+    }>(`/projects/${projectId}/sections`),
+
+  startRun: (req: RunRequest) =>
+    http<{ run_id: string }>('/rounds/run', { method: 'POST', body: JSON.stringify(req) }),
+
+  getRun: (runId: string) =>
+    http<{ run: Run; events: PipelineEvent[] }>(`/runs/${runId}`),
+
+  listRuns: () => http<{ active: string | null; runs: Run[] }>('/runs'),
 };

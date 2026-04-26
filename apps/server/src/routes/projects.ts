@@ -110,4 +110,25 @@ export const projectsRoutes: FastifyPluginAsync = async (app) => {
     if (!ok) return reply.status(404).send({ error: 'not found' });
     return { ok: true as const };
   });
+
+  app.get<{ Params: { id: string } }>('/projects/:id/sections', async (req, reply) => {
+    const project = await projectStore.get(req.params.id);
+    if (!project) return reply.status(404).send({ error: 'not found' });
+    const matches = await fg(project.sections_glob, {
+      cwd: project.latex_root,
+      dot: false,
+      onlyFiles: true,
+      suppressErrors: true,
+    });
+    matches.sort();
+    return {
+      latex_root: project.latex_root,
+      sections_glob: project.sections_glob,
+      sections: matches.map((rel) => ({
+        rel,
+        name: rel.split('/').pop() ?? rel,
+      })),
+      total: matches.length,
+    };
+  });
 };

@@ -140,6 +140,19 @@ export type RunRequest = {
   dry_run?: boolean;
 };
 
+export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
+
+export type Run = {
+  id: string;
+  project_id: string;
+  request: RunRequest;
+  status: RunStatus;
+  started_at: string;
+  finished_at?: string;
+  round_ids: string[];
+  error?: string;
+};
+
 export type PipelineStage = 'review' | 'changes' | 'blind' | 'verdict' | 'done';
 
 export type PipelineEvent =
