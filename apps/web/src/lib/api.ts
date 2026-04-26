@@ -1,4 +1,6 @@
 import type {
+  Decision,
+  DecisionsPatch,
   Project,
   ProjectInput,
   ProjectValidateRequest,
@@ -41,5 +43,11 @@ export const api = {
 
   listRounds: (projectId: string) =>
     http<RoundSummary[]>(`/rounds?project_id=${encodeURIComponent(projectId)}`),
-  getRound: (id: string) => http<Round>(`/rounds/${id}`),
+  getRound: (projectId: string, id: string) =>
+    http<Round>(`/rounds/${id}?project_id=${encodeURIComponent(projectId)}`),
+  patchDecisions: (projectId: string, id: string, patch: DecisionsPatch) =>
+    http<{ decisions: Record<string, Decision> }>(
+      `/rounds/${id}/decisions?project_id=${encodeURIComponent(projectId)}`,
+      { method: 'PATCH', body: JSON.stringify(patch) },
+    ),
 };

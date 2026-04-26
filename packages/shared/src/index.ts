@@ -66,12 +66,16 @@ export type Round = {
   project_id: string;
   /** Primary section if the round targeted one, or 'multi' for grouped runs. */
   section: string;
-  persona: Persona;
-  model: ModelTier;
+  /** Null for legacy rounds without meta.json. */
+  persona: Persona | null;
+  /** Null for legacy rounds without meta.json. */
+  model: ModelTier | null;
   status: 'in-progress' | 'completed' | 'failed';
   items: RoundItem[];
   decisions: Record<string, Decision>;
 };
+
+export type DecisionsPatch = Record<string, Decision>;
 
 export type RoundMeta = {
   id: string;
