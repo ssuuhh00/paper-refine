@@ -50,23 +50,12 @@ port_is_only_ours() {
   return 0
 }
 
-# Print who is on the given port (pid + cwd + cmd) — for the refuse message.
-describe_port_holder() {
-  local port=$1
-  local pid cwd cmd
-  for pid in $(lsof -ti:"$port" 2>/dev/null || true); do
-    cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null || echo "?")
-    cmd=$(ps -p "$pid" -o args= 2>/dev/null | head -c 80 || echo "?")
-    echo "    pid=$pid cwd=$cwd"
-    echo "      cmd: $cmd"
-  done
-}
-
 handle_busy_port() {
   local port=$1 label=$2 envvar=$3
-  if ! lsof -ti:"$port" >/dev/null 2>&1; then
-    return 0  # free
-  fi
+  local pids
+  pids=$(lsof -ti:"$port" 2>/dev/null || true)
+  [ -z "$pids" ] && return 0  # port is free
+
   if [ "$KILL_STALE" = 1 ]; then
     local ours
     if ours=$(port_is_only_ours "$port"); then
@@ -75,12 +64,30 @@ handle_busy_port() {
       sleep 0.3
       return 0
     fi
-    echo "✗ port $port held by a process outside this repo — refusing to kill." >&2
-    describe_port_holder "$port" >&2
-    exit 1
   fi
-  echo "✗ port $port already in use. Free it, set $envvar=<other>, or rerun with --kill-stale." >&2
-  describe_port_holder "$port" >&2
+
+  # Diverge by who's holding the port.
+  if port_is_only_ours "$port" >/dev/null; then
+    # Stale paper-refine proc — give a copy-pasteable kill command.
+    echo "✗ port $port already in use by a stale paper-refine $label proc." >&2
+    echo "" >&2
+    echo "  Run one of these to clear it:" >&2
+    echo "    ./start.sh --kill-stale" >&2
+    echo "    kill $pids" >&2
+  else
+    # Foreign process — show what it is so the user can decide.
+    echo "✗ port $port already in use by a non-paper-refine process." >&2
+    echo "  Free it manually, or rerun with $envvar=<other-port> ./start.sh" >&2
+    echo "" >&2
+    echo "  Holder:" >&2
+    local pid cwd cmd
+    for pid in $pids; do
+      cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null || echo "?")
+      cmd=$(ps -p "$pid" -o args= 2>/dev/null || echo "?")
+      echo "    pid=$pid  cwd=$cwd" >&2
+      echo "    cmd: $cmd" >&2
+    done
+  fi
   exit 1
 }
 
