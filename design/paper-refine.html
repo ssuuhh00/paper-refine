@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>paper-refine · Design</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" rel="stylesheet" />
+<style>
+  :root, .light {
+    --bg: #faf8f3;
+    --surface: #ffffff;
+    --surface-2: #f1ede4;
+    --ink: #1c1a14;
+    --ink-2: #4a463c;
+    --ink-3: #807a6c;
+    --ink-4: #b8b1a0;
+    --border: #e7e1d3;
+    --border-soft: #efeadd;
+    --gutter: #faf8f3;
+
+    --accent: #3a3a8c;
+    --accent-fg: #ffffff;
+    --accent-bg: #ecebf5;
+
+    --ok: #2f7d3a;
+    --ok-bg: #e8f1e6;
+    --mute: #6f6a5e;
+    --mute-bg: #efece4;
+    --warn: #b35a1f;
+    --warn-bg: #f7ece1;
+
+    --add: #1c5e2e;
+    --add-bg: #e6f0e1;
+    --del: #9c3e1f;
+    --del-bg: #f6e3d6;
+
+    --sans: 'Pretendard', 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  .dark {
+    --bg: #14130f;
+    --surface: #1c1a16;
+    --surface-2: #26231d;
+    --ink: #f0ece2;
+    --ink-2: #c5bfae;
+    --ink-3: #8a8472;
+    --ink-4: #56514a;
+    --border: #2e2a23;
+    --border-soft: #26231d;
+    --gutter: #14130f;
+
+    --accent: #8a8aff;
+    --accent-fg: #14130f;
+    --accent-bg: #232245;
+
+    --ok: #7dc486;
+    --ok-bg: #1d2a1d;
+    --mute: #8a8472;
+    --mute-bg: #232017;
+    --warn: #d68a52;
+    --warn-bg: #2c2117;
+
+    --add: #a3d8ad;
+    --add-bg: #1d2a1d;
+    --del: #e1a385;
+    --del-bg: #2c2017;
+  }
+  html, body, #root { height: 100%; margin: 0; }
+  body {
+    font-family: var(--sans);
+    background: #f0eee9;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+  *::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="components.jsx"></script>
+<script type="text/babel" src="page1.jsx"></script>
+<script type="text/babel" src="page2.jsx"></script>
+<script type="text/babel" src="page3.jsx"></script>
+<script type="text/babel" src="page4.jsx"></script>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "light",
+  "density": "comfortable",
+  "showKbdHints": true,
+  "diffMode": "split"
+}/*EDITMODE-END*/;
+
+function ThemedFrame({ theme, children }) {
+  // The canvas artboard's background must follow the theme — the wrapper
+  // div applies the theme class so all CSS vars resolve correctly inside.
+  return (
+    <div className={theme} style={{ width: '100%', height: '100%', background: 'var(--bg)' }}>
+      {children}
+    </div>
+  );
+}
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  return (
+    <>
+      <DesignCanvas>
+        <DCSection id="workspace" title="Page 3 · 라운드 상세 워크스페이스" subtitle="메인 화면 — Reviewer→Generator→Blind→Verdict 4-step 스토리, 결정 바, diff, 키보드 단축키">
+          <DCArtboard id="p3-light" label="Page 3 · Light · 결정 바 활성" width={1320} height={920}>
+            <ThemedFrame theme="light"><Page3Workspace density={t.density} showKbdHints={t.showKbdHints} /></ThemedFrame>
+          </DCArtboard>
+          <DCArtboard id="p3-dark" label="Page 3 · Dark" width={1320} height={920}>
+            <ThemedFrame theme="dark"><Page3Workspace density={t.density} showKbdHints={t.showKbdHints} /></ThemedFrame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="launcher" title="Page 2 · 라운드 런처" subtitle="신규 — refine.sh 폼 + 인플레이스 진행 콘솔">
+          <DCArtboard id="p2-form" label="Form · 입력 단계" width={760} height={920}>
+            <ThemedFrame theme="light"><Page2Launcher /></ThemedFrame>
+          </DCArtboard>
+          <DCArtboard id="p2-running" label="Running · 진행 콘솔" width={920} height={920}>
+            <ThemedFrame theme="light"><Page2Launcher initialState="running" /></ThemedFrame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="dashboard" title="Page 1 · 라운드 인덱스" subtitle="대시보드 — KPI · 페르소나 차트 · 라운드 카드 그리드">
+          <DCArtboard id="p1" label="Dashboard · Light" width={1100} height={880}>
+            <ThemedFrame theme="light"><Page1Dashboard /></ThemedFrame>
+          </DCArtboard>
+          <DCArtboard id="p1-dark" label="Dashboard · Dark" width={1100} height={880}>
+            <ThemedFrame theme="dark"><Page1Dashboard /></ThemedFrame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="error-notes" title="Page 4 · 오답노트" subtitle="누적 학습 뷰 — Discriminator 거부 + 사용자 거부 타임라인">
+          <DCArtboard id="p4" label="오답노트" width={760} height={900}>
+            <ThemedFrame theme="light"><Page4ErrorNotes /></ThemedFrame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCPostIt top={20} left={60} rotate={-2} width={240}>
+          <b>Page 3가 핵심.</b><br/>
+          좌측 R리스트에서 항목 선택 →<br/>
+          4-step 스토리 →<br/>
+          하단 sticky 결정바.<br/>
+          A/S/R 단축키 + ←→ 항목 이동.
+        </DCPostIt>
+      </DesignCanvas>
+
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Display" />
+        <TweakRadio label="정보 밀도" value={t.density}
+          options={[{value: 'compact', label: 'compact'}, {value: 'comfortable', label: 'comfy'}]}
+          onChange={(v) => setTweak('density', v)} />
+        <TweakToggle label="키보드 단축키 표시" value={t.showKbdHints}
+          onChange={(v) => setTweak('showKbdHints', v)} />
+        <TweakSection label="Diff" />
+        <TweakRadio label="기본 보기" value={t.diffMode}
+          options={[{value: 'split', label: 'split'}, {value: 'unified', label: 'unified'}]}
+          onChange={(v) => setTweak('diffMode', v)} />
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

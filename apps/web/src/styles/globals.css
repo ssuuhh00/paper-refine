@@ -1,0 +1,119 @@
+/* Design tokens — sourced from design/paper-refine.html */
+
+:root,
+.light {
+  --bg: #faf8f3;
+  --surface: #ffffff;
+  --surface-2: #f1ede4;
+  --ink: #1c1a14;
+  --ink-2: #4a463c;
+  --ink-3: #807a6c;
+  --ink-4: #b8b1a0;
+  --border: #e7e1d3;
+  --border-soft: #efeadd;
+  --gutter: #faf8f3;
+
+  --accent: #3a3a8c;
+  --accent-fg: #ffffff;
+  --accent-bg: #ecebf5;
+
+  --ok: #2f7d3a;
+  --ok-bg: #e8f1e6;
+  --mute: #6f6a5e;
+  --mute-bg: #efece4;
+  --warn: #b35a1f;
+  --warn-bg: #f7ece1;
+
+  --add: #1c5e2e;
+  --add-bg: #e6f0e1;
+  --del: #9c3e1f;
+  --del-bg: #f6e3d6;
+
+  --sans: 'Pretendard', 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+.dark {
+  --bg: #14130f;
+  --surface: #1c1a16;
+  --surface-2: #26231d;
+  --ink: #f0ece2;
+  --ink-2: #c5bfae;
+  --ink-3: #8a8472;
+  --ink-4: #56514a;
+  --border: #2e2a23;
+  --border-soft: #26231d;
+  --gutter: #14130f;
+
+  --accent: #8a8aff;
+  --accent-fg: #14130f;
+  --accent-bg: #232245;
+
+  --ok: #7dc486;
+  --ok-bg: #1d2a1d;
+  --mute: #8a8472;
+  --mute-bg: #232017;
+  --warn: #d68a52;
+  --warn-bg: #2c2117;
+
+  --add: #a3d8ad;
+  --add-bg: #1d2a1d;
+  --del: #e1a385;
+  --del-bg: #2c2017;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-4);
+}
+
+button {
+  font-family: inherit;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes progressBar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}

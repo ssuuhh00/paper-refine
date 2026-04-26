@@ -1,0 +1,20 @@
+{
+  "name": "paper-refine",
+  "private": true,
+  "version": "0.0.1",
+  "description": "논문 고도화 4단계 자동 파이프라인 워크벤치",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:web": "npm run dev -w @paper-refine/web",
+    "dev:server": "npm run dev -w @paper-refine/server",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=18.18"
+  }
+}

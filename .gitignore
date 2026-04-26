@@ -1,0 +1,26 @@
+# deps & build
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.local
+.env.*.local
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# logs
+*.log
+npm-debug.log*
+
+# runtime
+*.pid
+.cache/
