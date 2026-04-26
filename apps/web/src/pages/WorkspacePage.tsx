@@ -491,7 +491,7 @@ export function WorkspacePage() {
                       marginTop: 6,
                     }}
                   >
-                    blind {item.verdict.pick} ({item.blind[item.verdict.pick]})
+                    blind {item.verdict.pick}
                   </div>
                 </Card>
                 <Card style={{ flex: 1, padding: 14 }}>
@@ -504,31 +504,11 @@ export function WorkspacePage() {
                       marginBottom: 4,
                     }}
                   >
-                    선택 사유
+                    사유
                   </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      lineHeight: 1.6,
-                      color: 'var(--ink)',
-                      marginBottom: 12,
-                    }}
-                  >
-                    {item.verdict.reason || '(사유 없음)'}
-                  </div>
-                  <div
-                    style={{
-                      fontFamily: 'var(--mono)',
-                      fontSize: 10.5,
-                      color: 'var(--ink-3)',
-                      letterSpacing: 0.5,
-                      marginBottom: 4,
-                    }}
-                  >
-                    탈락 사유
-                  </div>
-                  <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--ink-2)' }}>
-                    {item.verdict.loserReason || '(사유 없음)'}
+                  <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--ink)' }}>
+                    {(recommendsModified ? item.verdict.reason : item.verdict.loserReason) ||
+                      '(사유 없음)'}
                   </div>
                 </Card>
               </div>

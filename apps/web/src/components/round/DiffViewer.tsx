@@ -2,11 +2,73 @@ import { useMemo } from 'react';
 
 export type DiffMode = 'split' | 'unified';
 
-type Row =
-  | { t: 'eq'; a: string; b: string; an: number; bn: number }
-  | { t: 'del'; a: string; an: number; bn: null }
-  | { t: 'add'; b: string; an: null; bn: number }
-  | { t: 'mod'; a: string; b: string; an: number; bn: number };
+type Tok = { t: 'eq' | 'del' | 'add'; s: string };
+
+type EqRow = { t: 'eq'; a: string; b: string; an: number; bn: number };
+type ClusterLine = { text: string; tokens: Tok[]; n: number };
+type ClusterRow = { t: 'cluster'; aLines: ClusterLine[]; bLines: ClusterLine[] };
+type Row = EqRow | ClusterRow;
+
+function tokenizeLatex(s: string): string[] {
+  return s.split(/(\s+|\\[a-zA-Z]+\*?|[{}[\]()=,])/g).filter((x) => x !== undefined && x !== '');
+}
+
+/**
+ * Token-level LCS across multiple lines on each side. Returns each side's
+ * tokens grouped back by source line, so the renderer can show line-by-line
+ * with word-level highlighting that survives line splits/merges.
+ */
+function multiLineWordDiff(aLines: string[], bLines: string[]): { a: Tok[][]; b: Tok[][] } {
+  type Src = { s: string; lineIdx: number };
+  const aSrc: Src[] = [];
+  const bSrc: Src[] = [];
+  aLines.forEach((line, i) => tokenizeLatex(line).forEach((t) => aSrc.push({ s: t, lineIdx: i })));
+  bLines.forEach((line, i) => tokenizeLatex(line).forEach((t) => bSrc.push({ s: t, lineIdx: i })));
+
+  const m = aSrc.length;
+  const n = bSrc.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i--)
+    for (let j = n - 1; j >= 0; j--) {
+      dp[i]![j] =
+        aSrc[i]!.s === bSrc[j]!.s
+          ? dp[i + 1]![j + 1]! + 1
+          : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
+    }
+
+  const aOut: { t: 'eq' | 'del'; s: string; lineIdx: number }[] = [];
+  const bOut: { t: 'eq' | 'add'; s: string; lineIdx: number }[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < m && j < n) {
+    if (aSrc[i]!.s === bSrc[j]!.s) {
+      aOut.push({ t: 'eq', s: aSrc[i]!.s, lineIdx: aSrc[i]!.lineIdx });
+      bOut.push({ t: 'eq', s: bSrc[j]!.s, lineIdx: bSrc[j]!.lineIdx });
+      i++;
+      j++;
+    } else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) {
+      aOut.push({ t: 'del', s: aSrc[i]!.s, lineIdx: aSrc[i]!.lineIdx });
+      i++;
+    } else {
+      bOut.push({ t: 'add', s: bSrc[j]!.s, lineIdx: bSrc[j]!.lineIdx });
+      j++;
+    }
+  }
+  while (i < m) {
+    aOut.push({ t: 'del', s: aSrc[i]!.s, lineIdx: aSrc[i]!.lineIdx });
+    i++;
+  }
+  while (j < n) {
+    bOut.push({ t: 'add', s: bSrc[j]!.s, lineIdx: bSrc[j]!.lineIdx });
+    j++;
+  }
+
+  const aByLine: Tok[][] = aLines.map(() => []);
+  const bByLine: Tok[][] = bLines.map(() => []);
+  for (const t of aOut) aByLine[t.lineIdx]!.push({ t: t.t, s: t.s });
+  for (const t of bOut) bByLine[t.lineIdx]!.push({ t: t.t, s: t.s });
+  return { a: aByLine, b: bByLine };
+}
 
 function lineDiff(aText: string, bText: string): Row[] {
   const a = aText.split('\n');
@@ -18,92 +80,64 @@ function lineDiff(aText: string, bText: string): Row[] {
     for (let j = n - 1; j >= 0; j--) {
       dp[i]![j] = a[i] === b[j] ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
     }
-  const out: { t: 'eq' | 'del' | 'add'; a?: string; b?: string }[] = [];
+
+  type Raw = { t: 'eq'; a: string; b: string } | { t: 'del'; a: string } | { t: 'add'; b: string };
+  const raw: Raw[] = [];
   let i = 0;
   let j = 0;
   while (i < m && j < n) {
     if (a[i] === b[j]) {
-      out.push({ t: 'eq', a: a[i]!, b: b[j]! });
+      raw.push({ t: 'eq', a: a[i]!, b: b[j]! });
       i++;
       j++;
     } else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) {
-      out.push({ t: 'del', a: a[i]! });
+      raw.push({ t: 'del', a: a[i]! });
       i++;
     } else {
-      out.push({ t: 'add', b: b[j]! });
+      raw.push({ t: 'add', b: b[j]! });
       j++;
     }
   }
-  while (i < m) out.push({ t: 'del', a: a[i++] });
-  while (j < n) out.push({ t: 'add', b: b[j++] });
-  // pair adjacent del/add as 'mod'
-  const paired: { t: 'eq' | 'del' | 'add' | 'mod'; a?: string; b?: string }[] = [];
-  for (let k = 0; k < out.length; k++) {
-    if (out[k]!.t === 'del' && out[k + 1]?.t === 'add') {
-      paired.push({ t: 'mod', a: out[k]!.a, b: out[k + 1]!.b });
-      k++;
-    } else paired.push(out[k]!);
-  }
-  // line numbers
+  while (i < m) raw.push({ t: 'del', a: a[i++]! });
+  while (j < n) raw.push({ t: 'add', b: b[j++]! });
+
+  const out: Row[] = [];
   let aLn = 0;
   let bLn = 0;
-  return paired.map((row): Row => {
-    if (row.t === 'eq') {
+  let k = 0;
+  while (k < raw.length) {
+    if (raw[k]!.t === 'eq') {
+      const r = raw[k] as { t: 'eq'; a: string; b: string };
       aLn++;
       bLn++;
-      return { t: 'eq', a: row.a!, b: row.b!, an: aLn, bn: bLn };
-    }
-    if (row.t === 'del') {
-      aLn++;
-      return { t: 'del', a: row.a!, an: aLn, bn: null };
-    }
-    if (row.t === 'add') {
-      bLn++;
-      return { t: 'add', b: row.b!, an: null, bn: bLn };
-    }
-    aLn++;
-    bLn++;
-    return { t: 'mod', a: row.a!, b: row.b!, an: aLn, bn: bLn };
-  });
-}
-
-function tokenizeLatex(s: string): string[] {
-  return s.split(/(\s+|\\[a-zA-Z]+\*?|[{}[\]()=,])/g).filter((x) => x !== undefined && x !== '');
-}
-
-type Tok = { t: 'eq' | 'del' | 'add'; s: string };
-
-function wordDiff(aLine: string, bLine: string): { a: Tok[]; b: Tok[] } {
-  const a = tokenizeLatex(aLine);
-  const b = tokenizeLatex(bLine);
-  const m = a.length;
-  const n = b.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
-  for (let i = m - 1; i >= 0; i--)
-    for (let j = n - 1; j >= 0; j--) {
-      dp[i]![j] = a[i] === b[j] ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
-    }
-  const aOut: Tok[] = [];
-  const bOut: Tok[] = [];
-  let i = 0;
-  let j = 0;
-  while (i < m && j < n) {
-    if (a[i] === b[j]) {
-      aOut.push({ t: 'eq', s: a[i]! });
-      bOut.push({ t: 'eq', s: b[j]! });
-      i++;
-      j++;
-    } else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) {
-      aOut.push({ t: 'del', s: a[i]! });
-      i++;
+      out.push({ t: 'eq', a: r.a, b: r.b, an: aLn, bn: bLn });
+      k++;
     } else {
-      bOut.push({ t: 'add', s: b[j]! });
-      j++;
+      const aLines: string[] = [];
+      const bLines: string[] = [];
+      const aNums: number[] = [];
+      const bNums: number[] = [];
+      while (k < raw.length && raw[k]!.t !== 'eq') {
+        if (raw[k]!.t === 'del') {
+          aLn++;
+          aLines.push((raw[k] as { a: string }).a);
+          aNums.push(aLn);
+        } else {
+          bLn++;
+          bLines.push((raw[k] as { b: string }).b);
+          bNums.push(bLn);
+        }
+        k++;
+      }
+      const wd = multiLineWordDiff(aLines, bLines);
+      out.push({
+        t: 'cluster',
+        aLines: aLines.map((text, idx) => ({ text, tokens: wd.a[idx]!, n: aNums[idx]! })),
+        bLines: bLines.map((text, idx) => ({ text, tokens: wd.b[idx]!, n: bNums[idx]! })),
+      });
     }
   }
-  while (i < m) aOut.push({ t: 'del', s: a[i++]! });
-  while (j < n) bOut.push({ t: 'add', s: b[j++]! });
-  return { a: aOut, b: bOut };
+  return out;
 }
 
 function renderTokens(tokens: Tok[]) {
@@ -191,35 +225,29 @@ export function DiffViewer({ original, modified, mode = 'split' }: Props) {
                 <div style={codeBase}>{r.a || ' '}</div>
               </div>
             );
-          if (r.t === 'del')
-            return (
-              <div key={i} style={{ display: 'flex', padding: '0 12px', background: 'var(--del-bg)' }}>
-                <div style={lnStyle}>{r.an}</div>
-                <div style={lnStyle}></div>
-                <div style={{ ...codeBase, color: 'var(--del)' }}>− {r.a}</div>
-              </div>
-            );
-          if (r.t === 'add')
-            return (
-              <div key={i} style={{ display: 'flex', padding: '0 12px', background: 'var(--add-bg)' }}>
-                <div style={lnStyle}></div>
-                <div style={lnStyle}>{r.bn}</div>
-                <div style={{ ...codeBase, color: 'var(--add)' }}>+ {r.b}</div>
-              </div>
-            );
-          const w = wordDiff(r.a, r.b);
+          // cluster
           return (
             <div key={i}>
-              <div style={{ display: 'flex', padding: '0 12px', background: 'var(--del-bg)' }}>
-                <div style={lnStyle}>{r.an}</div>
-                <div style={lnStyle}></div>
-                <div style={{ ...codeBase, color: 'var(--del)' }}>− {renderTokens(w.a)}</div>
-              </div>
-              <div style={{ display: 'flex', padding: '0 12px', background: 'var(--add-bg)' }}>
-                <div style={lnStyle}></div>
-                <div style={lnStyle}>{r.bn}</div>
-                <div style={{ ...codeBase, color: 'var(--add)' }}>+ {renderTokens(w.b)}</div>
-              </div>
+              {r.aLines.map((ln, k) => (
+                <div
+                  key={`a${k}`}
+                  style={{ display: 'flex', padding: '0 12px', background: 'var(--del-bg)' }}
+                >
+                  <div style={lnStyle}>{ln.n}</div>
+                  <div style={lnStyle}></div>
+                  <div style={{ ...codeBase, color: 'var(--del)' }}>− {renderTokens(ln.tokens)}</div>
+                </div>
+              ))}
+              {r.bLines.map((ln, k) => (
+                <div
+                  key={`b${k}`}
+                  style={{ display: 'flex', padding: '0 12px', background: 'var(--add-bg)' }}
+                >
+                  <div style={lnStyle}></div>
+                  <div style={lnStyle}>{ln.n}</div>
+                  <div style={{ ...codeBase, color: 'var(--add)' }}>+ {renderTokens(ln.tokens)}</div>
+                </div>
+              ))}
             </div>
           );
         })}
@@ -227,7 +255,7 @@ export function DiffViewer({ original, modified, mode = 'split' }: Props) {
     );
   }
 
-  // split mode
+  // split mode — pad shorter side of each cluster so following eq rows still align
   const Side = ({ kind }: { kind: 'a' | 'b' }) => (
     <div style={{ flex: 1, minWidth: 0, background: 'var(--surface)' }}>
       <div
@@ -258,52 +286,31 @@ export function DiffViewer({ original, modified, mode = 'split' }: Props) {
                 <div style={codeBase}>{(kind === 'a' ? r.a : r.b) || ' '}</div>
               </div>
             );
-          if (r.t === 'del')
-            return (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  padding: '0 12px',
-                  background: kind === 'a' ? 'var(--del-bg)' : 'var(--gutter)',
-                }}
-              >
-                <div style={lnStyle}>{kind === 'a' ? r.an : ''}</div>
-                <div style={{ ...codeBase, color: kind === 'a' ? 'var(--del)' : 'transparent' }}>
-                  {kind === 'a' ? r.a : ' '}
-                </div>
-              </div>
-            );
-          if (r.t === 'add')
-            return (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  padding: '0 12px',
-                  background: kind === 'b' ? 'var(--add-bg)' : 'var(--gutter)',
-                }}
-              >
-                <div style={lnStyle}>{kind === 'b' ? r.bn : ''}</div>
-                <div style={{ ...codeBase, color: kind === 'b' ? 'var(--add)' : 'transparent' }}>
-                  {kind === 'b' ? r.b : ' '}
-                </div>
-              </div>
-            );
-          const w = wordDiff(r.a, r.b);
+          const own = kind === 'a' ? r.aLines : r.bLines;
+          const other = kind === 'a' ? r.bLines : r.aLines;
+          const padCount = Math.max(0, other.length - own.length);
+          const bg = kind === 'a' ? 'var(--del-bg)' : 'var(--add-bg)';
+          const fg = kind === 'a' ? 'var(--del)' : 'var(--add)';
+          const sigil = kind === 'a' ? '−' : '+';
           return (
-            <div
-              key={i}
-              style={{
-                display: 'flex',
-                padding: '0 12px',
-                background: kind === 'a' ? 'var(--del-bg)' : 'var(--add-bg)',
-              }}
-            >
-              <div style={lnStyle}>{kind === 'a' ? r.an : r.bn}</div>
-              <div style={{ ...codeBase, color: kind === 'a' ? 'var(--del)' : 'var(--add)' }}>
-                {renderTokens(kind === 'a' ? w.a : w.b)}
-              </div>
+            <div key={i}>
+              {own.map((ln, k) => (
+                <div key={k} style={{ display: 'flex', padding: '0 12px', background: bg }}>
+                  <div style={lnStyle}>{ln.n}</div>
+                  <div style={{ ...codeBase, color: fg }}>
+                    {sigil} {renderTokens(ln.tokens)}
+                  </div>
+                </div>
+              ))}
+              {Array.from({ length: padCount }).map((_, k) => (
+                <div
+                  key={`pad${k}`}
+                  style={{ display: 'flex', padding: '0 12px', background: 'var(--gutter)' }}
+                >
+                  <div style={lnStyle}></div>
+                  <div style={{ ...codeBase, color: 'transparent' }}> </div>
+                </div>
+              ))}
             </div>
           );
         })}
