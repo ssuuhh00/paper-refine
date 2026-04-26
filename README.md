@@ -88,7 +88,6 @@ paper-refine/
 │       └── prompts/ vendored: reviewer_{4종}, generator, discriminator
 ├── packages/
 │   └── shared/      도메인 타입 (Project, Round, Decision, PipelineEvent ...)
-├── design/          디자인 시안 (jsx + html preview)
 └── start.sh         dev 런처
 ```
 

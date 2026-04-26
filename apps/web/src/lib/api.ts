@@ -18,10 +18,11 @@ import type {
 const base = '/api';
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
+  const hasBody = init?.body != null;
   const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -82,7 +83,6 @@ export const api = {
   cancelRun: (runId: string) =>
     http<{ ok: true }>(`/runs/${encodeURIComponent(runId)}/cancel`, {
       method: 'POST',
-      body: '{}',
     }),
 
   listErrorNotes: (projectId: string) =>

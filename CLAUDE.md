@@ -29,10 +29,8 @@ paper-refine/
 ├── apps/
 │   ├── web/             Vite + React
 │   └── server/          Fastify
-├── packages/
-│   └── shared/          Project, Round, Decision, PipelineEvent 등 타입
-├── design/              디자인 시안 (페이지별 jsx + html preview)
-└── HANDOFF.md           이전 세션 인계 문서
+└── packages/
+    └── shared/          Project, Round, Decision, PipelineEvent 등 타입
 ```
 
 dev 실행: `./start.sh` (백엔드+프론트 동시 기동 + 브라우저 자동 오픈) 또는 수동으로 `npm run dev:server` / `npm run dev:web` (:3001 / :5173, /api 프록시)
