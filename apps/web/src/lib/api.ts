@@ -91,4 +91,17 @@ export const api = {
 
   listErrorNotes: (projectId: string) =>
     http<ErrorNote[]>(`/error-notes?project_id=${encodeURIComponent(projectId)}`),
+  dismissErrorNotes: (
+    projectId: string,
+    keys: { round: string; key: string; source: 'user' | 'discriminator' }[],
+  ) =>
+    http<ErrorNote[]>(
+      `/error-notes/dismiss?project_id=${encodeURIComponent(projectId)}`,
+      { method: 'POST', body: JSON.stringify(keys) },
+    ),
+  dismissAllErrorNotes: (projectId: string) =>
+    http<ErrorNote[]>(
+      `/error-notes/dismiss-all?project_id=${encodeURIComponent(projectId)}`,
+      { method: 'POST' },
+    ),
 };

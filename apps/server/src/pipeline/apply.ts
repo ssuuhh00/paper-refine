@@ -7,6 +7,7 @@ import type {
   RoundItem,
 } from '@paper-refine/shared';
 import { loadFullRound, patchDecisions } from '../parse/round.js';
+import { rebuildErrorNotesMd } from '../parse/error-notes.js';
 
 async function readSection(
   latexRoot: string,
@@ -25,34 +26,9 @@ async function readSection(
   throw lastErr ?? new Error(`section not found: ${sec}`);
 }
 
-async function appendErrorNotes(
-  notesPath: string,
-  roundId: string,
-  rejected: { item: RoundItem; reason: string }[],
-): Promise<void> {
-  if (rejected.length === 0) return;
-  await fs.mkdir(path.dirname(notesPath), { recursive: true });
-  let header = '';
-  try {
-    await fs.access(notesPath);
-  } catch {
-    header =
-      '# 오답노트 (Error Notes)\n\nGenerator가 참고할 수 있는 이전 라운드의 거부 피드백 모음.\n\n---\n\n';
-  }
-  const lines: string[] = [];
-  if (header) lines.push(header);
-  lines.push(`\n## ${roundId}\n`);
-  for (const { item, reason } of rejected) {
-    lines.push(`### ${item.r}: ${item.title || item.rule || '(제목 없음)'}`);
-    if (item.rule) lines.push(`- **Rule**: ${item.rule}`);
-    lines.push(`- **거부 사유**: ${reason || '(사유 미작성)'}`);
-    if (item.edits.length > 0) {
-      lines.push(`- **거부된 edits**: ${item.edits.length}개 (${[...new Set(item.edits.map((e) => e.file))].join(', ')})`);
-    }
-    lines.push('');
-  }
-  await fs.appendFile(notesPath, lines.join('\n'), 'utf8');
-}
+// error_notes.md is now rebuilt from the aggregator (see rebuildErrorNotesMd)
+// after decisions are persisted, so dismissed entries are honored and stale
+// rejects (un-rejected after the fact) drop out automatically.
 
 /**
  * Apply a round's user-approved R items to the .tex tree.
@@ -173,8 +149,6 @@ export async function applyRound(
   }
 
   if (!opts.dryRun) {
-    await appendErrorNotes(project.error_notes_path, roundId, rejectedItems);
-
     const now = new Date().toISOString();
     const patch: Record<string, Decision> = {};
     for (const a of applied) {
@@ -188,6 +162,10 @@ export async function applyRound(
     if (Object.keys(patch).length > 0) {
       await patchDecisions(project, roundId, patch);
     }
+    // Rebuild error_notes.md from all (filtered) user rejects across the
+    // project so this file always reflects the current state — including new
+    // rejects from this apply and excluding any dismissed ones.
+    await rebuildErrorNotesMd(project);
   }
 
   return {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { ErrorNote, Persona } from '@paper-refine/shared';
 import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
 import { PersonaBadge } from '../components/round/PersonaBadge';
 import { SectionTag } from '../components/round/SectionTag';
 import { PERSONAS, PERSONA_KEYS } from '../data/personas';
@@ -31,6 +32,35 @@ export function ErrorNotesPage() {
       alive = false;
     };
   }, [current?.id]);
+
+  const dismissOne = async (n: ErrorNote) => {
+    if (!current) return;
+    setError(null);
+    try {
+      const next = await api.dismissErrorNotes(current.id, [
+        { round: n.round, key: n.key, source: n.source },
+      ]);
+      setNotes(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const dismissAll = async () => {
+    if (!current || notes.length === 0) return;
+    const ok = window.confirm(
+      `현재 보이는 오답노트 ${notes.length}개를 모두 삭제합니다.\n` +
+        `타임라인에서 사라지고, error_notes.md에서도 제거되어 다음 라운드 Generator가 보지 않습니다.\n계속할까요?`,
+    );
+    if (!ok) return;
+    setError(null);
+    try {
+      const next = await api.dismissAllErrorNotes(current.id);
+      setNotes(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   const filtered = useMemo(
     () => (filter === 'all' ? notes : notes.filter((n) => n.source === filter)),
@@ -64,26 +94,42 @@ export function ErrorNotesPage() {
   return (
     <div style={{ flex: 1, overflowY: 'auto' }}>
       <div style={{ maxWidth: 880, margin: '0 auto', padding: '24px 28px 60px' }}>
-        <header style={{ marginBottom: 22 }}>
-          <div
-            style={{
-              fontFamily: 'var(--mono)',
-              fontSize: 11,
-              color: 'var(--warn)',
-              letterSpacing: 0.6,
-              marginBottom: 6,
-            }}
-          >
-            ERROR NOTES
+        <header
+          style={{
+            marginBottom: 22,
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'space-between',
+            gap: 16,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontFamily: 'var(--mono)',
+                fontSize: 11,
+                color: 'var(--warn)',
+                letterSpacing: 0.6,
+                marginBottom: 6,
+              }}
+            >
+              ERROR NOTES
+            </div>
+            <h1 style={{ fontSize: 24, fontWeight: 600, letterSpacing: -0.4, margin: 0 }}>
+              오답노트
+            </h1>
+            <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '6px 0 0' }}>
+              거부된 수정안의 사유 — 사용자 거부 + Discriminator 거부 누적.{' '}
+              <span style={{ fontFamily: 'var(--mono)' }}>{current.error_notes_path}</span>에
+              기록됩니다.
+            </p>
           </div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, letterSpacing: -0.4, margin: 0 }}>
-            오답노트
-          </h1>
-          <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '6px 0 0' }}>
-            거부된 수정안의 사유 — 사용자 거부 + Discriminator 거부 누적.{' '}
-            <span style={{ fontFamily: 'var(--mono)' }}>{current.error_notes_path}</span>에
-            기록됩니다.
-          </p>
+          {notes.length > 0 && (
+            <Button variant="ghost" onClick={dismissAll}>
+              전체 삭제 <span style={{ fontFamily: 'var(--mono)', opacity: 0.7 }}>{notes.length}</span>
+            </Button>
+          )}
         </header>
 
         {error && (
@@ -138,7 +184,7 @@ export function ErrorNotesPage() {
             조건에 맞는 항목이 없습니다.
           </Card>
         ) : (
-          <Timeline notes={filtered} />
+          <Timeline notes={filtered} onDismiss={dismissOne} />
         )}
 
         {notes.length > 0 && (
@@ -213,7 +259,13 @@ export function ErrorNotesPage() {
   );
 }
 
-function Timeline({ notes }: { notes: ErrorNote[] }) {
+function Timeline({
+  notes,
+  onDismiss,
+}: {
+  notes: ErrorNote[];
+  onDismiss: (n: ErrorNote) => void | Promise<void>;
+}) {
   return (
     <div style={{ position: 'relative', paddingLeft: 20 }}>
       <div
@@ -254,7 +306,43 @@ function Timeline({ notes }: { notes: ErrorNote[] }) {
                 border: `2px solid ${color}`,
               }}
             />
-            <Card style={{ padding: 12 }}>
+            <Card style={{ padding: 12, position: 'relative' }}>
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void onDismiss(n);
+                }}
+                title="이 오답노트 삭제"
+                style={{
+                  position: 'absolute',
+                  top: 6,
+                  right: 6,
+                  width: 22,
+                  height: 22,
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg)',
+                  color: 'var(--ink-3)',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  lineHeight: 1,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = 'var(--warn)';
+                  e.currentTarget.style.borderColor = 'var(--warn)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = 'var(--ink-3)';
+                  e.currentTarget.style.borderColor = 'var(--border)';
+                }}
+              >
+                ×
+              </button>
               <div
                 style={{
                   display: 'flex',
